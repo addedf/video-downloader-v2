@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="download_progress_top_margin">18dp</dimen>
+    <dimen name="download_progress_detail_top_margin">6dp</dimen>
+    <dimen name="download_progress_detail_text_size">12sp</dimen>
+</resources>

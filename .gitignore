@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+local.properties
+*.jks
+*.keystore
+!android/app/debug.keystore
+
+# Android / Gradle
+.gradle/
+**/build/
+**/.kotlin/
+**/.externalNativeBuild/
+**/.cxx/
+**/captures/
+
+# JavaScript admin app
+**/node_modules/
+**/.next/
+**/dist/
+**/coverage/
+
+# Backend / Python
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+
+# Logs and temporary files
+*.log
+.tmp/
+tmp/

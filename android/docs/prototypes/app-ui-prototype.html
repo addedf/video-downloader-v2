@@ -1,0 +1,2131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>抖音下载器 UI 与动效原型</title>
+  <style>
+    :root {
+      --primary: #121217;
+      --primary-dark: #050507;
+      --primary-light: #24242c;
+      --cyan: #00e5f0;
+      --cyan-dark: #00a8b5;
+      --surface: #f7f8fa;
+      --surface-strong: #eef1f4;
+      --preview-canvas: #d7dbe0;
+      --stroke: #dde2e8;
+      --muted: #69707a;
+      --success: #16885b;
+      --error: #d94747;
+      --white: #fff;
+      --mask: rgba(5, 5, 7, .45);
+      --radius: 8px;
+      --motion-ease: cubic-bezier(.2, .82, .2, 1);
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #d8dce3;
+      color: var(--primary-light);
+    }
+
+    button, textarea, input { font: inherit; }
+
+    .prototype-stage {
+      min-height: 100vh;
+    }
+
+    .phone {
+      width: min(430px, 100vw);
+      min-height: 100vh;
+      height: 100vh;
+      margin: 0 auto;
+      background: var(--white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.05);
+    }
+
+    .app-title {
+      height: 82px;
+      padding: 34px 16px 0;
+      display: flex;
+      align-items: center;
+      background: var(--white);
+      color: var(--primary);
+      font-size: 20px;
+      font-weight: 800;
+      box-shadow: 0 1px 4px rgba(18,18,23,.12);
+      position: relative;
+      z-index: 2;
+    }
+
+    .content {
+      height: calc(100vh - 82px);
+      padding: 8px 8px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--white);
+    }
+
+    .section {
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--white);
+      padding: 8px;
+    }
+
+    .resolve-section { flex: 0 0 auto; }
+    .preview-section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+    .label {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 15px;
+    }
+
+    .title {
+      margin-top: 1px;
+      color: var(--primary-light);
+      font-size: 14px;
+      line-height: 19px;
+      font-weight: 800;
+    }
+
+    .meta {
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    textarea {
+      width: 100%;
+      height: 48px;
+      margin-top: 4px;
+      resize: none;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--primary-light);
+      outline: none;
+      padding: 7px;
+      font-size: 12px;
+      line-height: 17px;
+      display: block;
+    }
+
+    textarea:focus {
+      border-color: var(--cyan-dark);
+      box-shadow: 0 0 0 2px rgba(0,229,240,.15);
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-top: 5px;
+    }
+
+    .button-row.preview-actions { grid-template-columns: 1fr 1.4fr; }
+    .button-row.preview-actions.with-live-option {
+      grid-template-columns: minmax(72px, .8fr) auto minmax(0, 1.4fr);
+      gap: 5px;
+    }
+    .button-row.dialog-actions { gap: 10px; margin-top: 18px; }
+    .button-row.history { gap: 8px; margin-top: 8px; }
+
+    .action-btn {
+      height: 34px;
+      border: 0;
+      border-radius: var(--radius);
+      padding: 0 14px;
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 34px;
+      text-align: center;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .primary { background: var(--primary); color: var(--white); }
+    .secondary { background: var(--cyan); color: #000; }
+    .ghost { background: var(--surface); color: var(--primary-light); border: 1px solid var(--stroke); }
+    .dialog-actions .action-btn, .mine-sheet .action-btn { height: 44px; line-height: 44px; }
+    .history .action-btn { height: 42px; line-height: 42px; font-size: 13px; }
+
+    .tabs {
+      height: 32px;
+      margin-top: 5px;
+      padding: 2px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 2px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .tab {
+      min-width: 0;
+      border: 0;
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .tab.active {
+      background: var(--white);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(18,18,23,.1);
+    }
+
+    .live-option {
+      height: 34px;
+      min-width: 88px;
+      padding: 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .live-option[hidden] { display: none; }
+
+    .live-option input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      flex: 0 0 auto;
+      accent-color: var(--primary);
+    }
+
+    .live-title {
+      display: block;
+      color: var(--primary);
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 800;
+    }
+
+    .preview-body {
+      min-height: 120px;
+      flex: 1 1 auto;
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .preview-card {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--preview-canvas);
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    .preview-card::before {
+      content: "";
+      width: 58%;
+      height: 100%;
+      max-width: 260px;
+      background:
+        radial-gradient(circle at 52% 28%, #ffe2d7 0 9%, transparent 10%),
+        linear-gradient(150deg, transparent 0 29%, #f8e5d4 30% 36%, transparent 37%),
+        linear-gradient(170deg, transparent 0 47%, #f8e5d4 48% 61%, transparent 62%),
+        linear-gradient(180deg, #80604f 0 18%, #18191f 18% 100%);
+      box-shadow: 0 0 0 1px rgba(255,255,255,.15);
+    }
+
+    .preview-card.mode-video::before {
+      width: 100%;
+      max-width: none;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.5)),
+        radial-gradient(circle at 50% 40%, rgba(0,229,240,.24), transparent 28%),
+        linear-gradient(135deg, #20242d, #121217 58%, #30394c);
+    }
+
+    .preview-card.mode-cover::before {
+      width: 100%;
+      max-width: none;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.42)),
+        radial-gradient(circle at 58% 29%, #ffe2d7 0 8%, transparent 9%),
+        linear-gradient(145deg, #c9d6dc 0 45%, #785d50 46% 58%, #24242c 59%);
+    }
+
+    .preview-card.mode-audio::before {
+      width: 100%;
+      max-width: none;
+      background:
+        radial-gradient(circle at 50% 50%, #00e5f0 0 11%, #121217 12% 23%, transparent 24%),
+        linear-gradient(135deg, #e8ecef, #f8f9fa 55%, #dce3e7);
+    }
+
+    .counter {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(18,18,23,.78);
+      color: var(--white);
+      font-size: 10px;
+      font-weight: 800;
+      z-index: 2;
+    }
+
+    .play-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      display: none;
+      place-items: center;
+      position: absolute;
+      inset: 0;
+      margin: auto;
+      background: rgba(18,18,23,.78);
+      color: var(--white);
+      font-size: 20px;
+      z-index: 2;
+    }
+
+    .preview-card.mode-video .play-icon { display: grid; }
+
+    .media-badge {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      padding: 3px 6px;
+      border-radius: 5px;
+      background: rgba(18,18,23,.78);
+      color: var(--white);
+      font-size: 9px;
+      line-height: 12px;
+      font-weight: 800;
+      z-index: 2;
+    }
+
+    .thumb-scroll {
+      width: 56px;
+      flex: 0 0 56px;
+      padding: 3px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .thumbs {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .thumb {
+      height: 62px;
+      border-radius: var(--radius);
+      border: 1px solid var(--stroke);
+      background:
+        radial-gradient(circle at 50% 30%, #ffe2d7 0 12%, transparent 13%),
+        linear-gradient(180deg, #80604f 0 24%, #20242d 24% 100%);
+      display: grid;
+      place-items: center;
+      color: var(--white);
+      font-size: 12px;
+      font-weight: 800;
+      overflow: hidden;
+    }
+
+    .thumb.active { border: 2px solid var(--cyan-dark); background-color: var(--surface-strong); }
+    .thumb.video { background: #24242c; }
+    .thumb.cover { background: linear-gradient(145deg, #c9d6dc 0 45%, #785d50 46% 58%, #24242c 59%); }
+    .thumb.audio { background: radial-gradient(circle, var(--cyan) 0 14%, #24242c 15% 38%, #dce3e7 39%); }
+
+    .caption {
+      height: 22px;
+      margin-top: 0;
+      padding: 0 6px;
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--stroke);
+      border-top: 0;
+      background: var(--white);
+      color: var(--primary-light);
+      font-size: 11px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .selection-note {
+      min-height: 14px;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 58px;
+      padding: 4px 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--white);
+      border-top: 1px solid var(--stroke);
+      z-index: 8;
+    }
+
+    .nav-item {
+      display: grid;
+      place-items: center;
+      color: var(--primary-light);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 800;
+      white-space: pre-line;
+      cursor: pointer;
+    }
+
+    .nav-item span { display: block; }
+
+    .nav-item.active { color: var(--primary); }
+
+    .dock-pulse {
+      --dock-progress: 0;
+      --dock-color: var(--cyan);
+      position: absolute;
+      top: 42px;
+      right: 8px;
+      width: 56px;
+      height: 56px;
+      margin: 0;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.02) 52%, rgba(0,0,0,.07)),
+        rgba(48,49,55,.92);
+      box-shadow: 0 5px 16px rgba(5,5,7,.24);
+      display: none;
+      align-items: center;
+      color: var(--white);
+      cursor: pointer;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      z-index: 12;
+      transform-origin: right center;
+      transition:
+        width 220ms var(--motion-ease),
+        border-color 160ms ease,
+        box-shadow 180ms ease,
+        transform 180ms var(--motion-ease);
+    }
+
+    .dock-pulse.show {
+      display: flex;
+      animation: dock-enter 320ms var(--motion-ease) both;
+    }
+
+    .dock-pulse.expanded { width: 188px; }
+    .dock-pulse.expanded[data-state="success"] { width: 176px; }
+
+    .dock-pulse[data-side="left"] {
+      right: auto;
+      left: 8px;
+      transform-origin: left center;
+    }
+
+    .dock-copy {
+      position: absolute;
+      left: 12px;
+      right: 56px;
+      min-width: 0;
+      text-align: left;
+      opacity: 0;
+      transform: translateX(8px);
+      transition: opacity 120ms ease, transform 180ms var(--motion-ease);
+      pointer-events: none;
+    }
+
+    .dock-pulse[data-side="left"] .dock-copy {
+      left: 56px;
+      right: 12px;
+      transform: translateX(-8px);
+    }
+
+    .dock-pulse.expanded .dock-copy {
+      opacity: 1;
+      transform: translateX(0);
+      transition-delay: 55ms;
+    }
+
+    .dock-primary,
+    .dock-secondary {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dock-primary {
+      color: var(--white);
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 800;
+    }
+
+    .dock-secondary {
+      margin-top: 1px;
+      color: rgba(255,255,255,.68);
+      font-size: 10px;
+      line-height: 13px;
+      font-weight: 700;
+    }
+
+    .dock-orb {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 56px;
+      height: 56px;
+      display: grid;
+      place-items: center;
+    }
+
+    .dock-pulse[data-side="left"] .dock-orb {
+      right: auto;
+      left: 0;
+    }
+
+    .dock-ring {
+      position: absolute;
+      inset: 0;
+      transform: rotate(-90deg);
+    }
+
+    .dock-ring circle {
+      fill: none;
+      stroke-width: 3.5;
+      stroke-linecap: round;
+    }
+
+    .dock-ring .track { stroke: rgba(255,255,255,.18); }
+
+    .dock-ring .fill {
+      stroke: var(--dock-color);
+      stroke-dasharray: 126;
+      stroke-dashoffset: calc(126 - (126 * var(--dock-progress) / 100));
+      transition: stroke 160ms ease, stroke-dashoffset 180ms ease-out;
+    }
+
+    .dock-icon {
+      position: relative;
+      z-index: 1;
+      color: var(--white);
+      font-size: 11px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .dock-icon[data-icon="download"],
+    .dock-icon[data-icon="save"] {
+      width: 22px;
+      height: 24px;
+      font-size: 0;
+    }
+
+    .dock-icon[data-icon="download"]::before,
+    .dock-icon[data-icon="save"]::before {
+      content: "";
+      position: absolute;
+      top: 1px;
+      left: 9.5px;
+      width: 3px;
+      height: 16px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .dock-icon[data-icon="download"]::after,
+    .dock-icon[data-icon="save"]::after {
+      content: "";
+      position: absolute;
+      top: 7px;
+      left: 5px;
+      width: 9px;
+      height: 9px;
+      border-right: 3px solid currentColor;
+      border-bottom: 3px solid currentColor;
+      border-radius: 1px;
+      transform: rotate(45deg);
+    }
+
+    .dock-icon[data-icon="save"] { border-bottom: 3px solid currentColor; }
+    .dock-icon[data-icon="success"] { font-size: 21px; }
+    .dock-icon[data-icon="error"] { font-size: 18px; }
+
+    .dock-pulse[data-state="resolving"] .dock-icon,
+    .dock-pulse[data-state="unknown"] .dock-icon,
+    .dock-pulse[data-state="finalizing"] .dock-icon {
+      animation: dock-arrow-float 1100ms ease-in-out infinite;
+    }
+
+    .dock-pulse[data-state="resolving"] .dock-ring,
+    .dock-pulse[data-state="unknown"] .dock-ring {
+      animation: dock-orbit 1100ms linear infinite;
+    }
+
+    .dock-pulse[data-state="resolving"] .fill,
+    .dock-pulse[data-state="unknown"] .fill {
+      animation: dock-arc 1100ms ease-in-out infinite;
+    }
+
+    .dock-pulse[data-state="finalizing"] .dock-ring {
+      animation: dock-orbit 1100ms linear infinite;
+    }
+
+    .dock-pulse[data-state="finalizing"] .fill {
+      animation: dock-arc 1100ms ease-in-out infinite;
+    }
+
+    .dock-pulse[data-state="success"] { --dock-color: var(--success); }
+    .dock-pulse[data-state="error"] { --dock-color: var(--error); }
+
+    .dock-pulse.status-pop { animation: dock-status-pop 380ms var(--motion-ease); }
+    .dock-pulse.status-reject { animation: dock-status-reject 320ms var(--motion-ease); }
+    .dock-pulse.lifted {
+      transform: scale(1.04);
+      box-shadow: 0 12px 24px rgba(5,5,7,.3);
+    }
+    .dock-pulse.dock-bump { animation: dock-edge-bump 360ms var(--motion-ease); }
+
+    @keyframes dock-enter {
+      0% { opacity: 0; transform: scale(.84); }
+      65% { opacity: 1; transform: scale(1.04); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes dock-orbit {
+      to { transform: rotate(270deg); }
+    }
+
+    @keyframes dock-arc {
+      0% { stroke-dasharray: 30 126; stroke-dashoffset: 0; }
+      52% { stroke-dasharray: 86 126; stroke-dashoffset: -16; }
+      100% { stroke-dasharray: 30 126; stroke-dashoffset: -126; }
+    }
+
+    @keyframes dock-arrow-float {
+      0%, 100% { transform: translateY(-1.6px); }
+      50% { transform: translateY(1.6px); }
+    }
+
+    @keyframes dock-status-pop {
+      0%, 100% { transform: scale(1); }
+      48% { transform: scale(1.08); }
+    }
+
+    @keyframes dock-status-reject {
+      0%, 100% { transform: translateX(0); }
+      28% { transform: translateX(-7px); }
+      62% { transform: translateX(4px); }
+    }
+
+    @keyframes dock-edge-bump {
+      0% { transform: scaleX(1) scaleY(1); }
+      45% { transform: scaleX(.94) scaleY(1.04); }
+      100% { transform: scaleX(1) scaleY(1); }
+    }
+
+    .mask {
+      position: absolute;
+      inset: 0;
+      background: var(--mask);
+      z-index: 20;
+      display: none;
+    }
+
+    .mask.show { display: block; }
+
+    .dialog {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-radius: 16px;
+      background: var(--white);
+      padding: 22px;
+    }
+
+    .dialog h2, .mine-sheet h2 {
+      margin: 0;
+      color: var(--primary);
+      font-size: 20px;
+      line-height: 26px;
+    }
+
+    .dialog p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 21px;
+      word-break: break-all;
+    }
+
+    .sheet-mask {
+      position: absolute;
+      inset: 0;
+      background: var(--mask);
+      z-index: 20;
+      display: none;
+      align-items: flex-end;
+    }
+
+    .sheet-mask.show { display: flex; }
+
+    .mine-sheet {
+      width: 100%;
+      border-radius: 18px 18px 0 0;
+      background: var(--white);
+      padding: 10px 16px 16px;
+    }
+
+    .grabber {
+      width: 42px;
+      height: 4px;
+      border-radius: 999px;
+      background: #c9ced6;
+      margin: 0 auto 16px;
+    }
+
+    .login-card, .history-card {
+      margin-top: 14px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      padding: 12px;
+      background: var(--white);
+    }
+
+    .login-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .login-copy { flex: 1; min-width: 0; }
+    .cookie-line { color: var(--muted); font-size: 12px; line-height: 17px; }
+    .login-state { margin-top: 2px; color: var(--primary-light); font-size: 16px; font-weight: 800; }
+    .history-card { background: var(--white); }
+    .history-title { color: var(--muted); font-size: 13px; }
+    .history-info { margin-top: 6px; color: var(--primary-light); font-size: 14px; line-height: 20px; word-break: break-all; }
+
+    .prototype-notes {
+      width: min(620px, calc(100vw - 24px));
+      margin: 24px auto 40px;
+    }
+
+    .notes-card {
+      border: 1px solid rgba(18,18,23,.1);
+      border-radius: var(--radius);
+      background: var(--white);
+      padding: 18px;
+      box-shadow: 0 8px 30px rgba(18,18,23,.09);
+    }
+
+    .motion-board {
+      overflow: hidden;
+      border: 1px solid rgba(18,18,23,.12);
+      border-radius: var(--radius);
+      background: var(--white);
+      box-shadow: 0 10px 34px rgba(18,18,23,.1);
+    }
+
+    .motion-board-head {
+      padding: 18px 18px 14px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .motion-board-title { min-width: 0; }
+
+    .motion-board-title h2 {
+      margin: 3px 0 0;
+      color: var(--primary);
+      font-size: 20px;
+      line-height: 27px;
+    }
+
+    .motion-board-title p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .prototype-tag {
+      flex: 0 0 auto;
+      border: 1px solid #9ce8ed;
+      border-radius: 6px;
+      background: #f1fcfd;
+      padding: 4px 7px;
+      color: #087984;
+      font-size: 10px;
+      line-height: 14px;
+      font-weight: 900;
+    }
+
+    .motion-stage {
+      height: 304px;
+      position: relative;
+      overflow: hidden;
+      border-top: 1px solid var(--stroke);
+      border-bottom: 1px solid var(--stroke);
+      background: var(--surface-strong);
+    }
+
+    .motion-stage-appbar {
+      height: 70px;
+      padding: 28px 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--white);
+      box-shadow: 0 1px 4px rgba(18,18,23,.1);
+      color: var(--primary);
+      font-size: 16px;
+      line-height: 22px;
+      font-weight: 900;
+    }
+
+    .motion-stage-context {
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 13px;
+      font-weight: 800;
+    }
+
+    .motion-stage-content {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 10px;
+    }
+
+    .stage-block {
+      height: 78px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--white);
+      padding: 11px;
+    }
+
+    .stage-block.tall { height: 140px; }
+
+    .stage-line {
+      width: 54%;
+      height: 7px;
+      border-radius: 2px;
+      background: #cbd1d8;
+    }
+
+    .stage-line.strong { width: 78%; height: 10px; background: #24242c; }
+    .stage-line.short { width: 40%; }
+    .stage-line + .stage-line { margin-top: 9px; }
+
+    .stage-action {
+      height: 28px;
+      margin-top: 18px;
+      border-radius: var(--radius);
+      background: var(--primary);
+    }
+
+    .demo-dock {
+      top: 34px;
+      right: 14px;
+      left: auto;
+      z-index: 5;
+    }
+
+    .demo-dock[data-side="left"] {
+      left: 14px;
+      right: auto;
+    }
+
+    .demo-dock.snapping {
+      transition:
+        left 360ms cubic-bezier(.18, .88, .28, 1.08),
+        top 260ms var(--motion-ease),
+        width 180ms var(--motion-ease),
+        transform 180ms var(--motion-ease),
+        box-shadow 180ms ease;
+    }
+
+    .demo-dock.dragging {
+      width: 56px !important;
+      transition: box-shadow 140ms ease, transform 140ms var(--motion-ease);
+    }
+
+    .callout-pin {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(18,18,23,.2);
+      border-radius: 999px;
+      background: var(--white);
+      color: var(--primary);
+      box-shadow: 0 2px 8px rgba(18,18,23,.12);
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 900;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .callout-pin::after {
+      content: "";
+      position: absolute;
+      width: 1px;
+      height: 13px;
+      background: rgba(18,18,23,.3);
+    }
+
+    .pin-ring { top: 10px; right: 31px; }
+    .pin-ring::after { top: 21px; }
+    .pin-copy { top: 101px; right: 138px; }
+    .pin-copy::after { bottom: 21px; }
+    .pin-anchor { top: 103px; right: 8px; }
+    .pin-anchor::after { bottom: 21px; }
+
+    .motion-stage[data-side="left"] .pin-ring { right: auto; left: 31px; }
+    .motion-stage[data-side="left"] .pin-copy { right: auto; left: 138px; }
+    .motion-stage[data-side="left"] .pin-anchor { right: auto; left: 8px; }
+
+    .drag-guide {
+      position: absolute;
+      left: 14px;
+      bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 14px;
+      font-weight: 800;
+      pointer-events: none;
+    }
+
+    .drag-guide-icon {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #cbd1d8;
+      border-radius: 999px;
+      background: var(--white);
+      color: var(--primary);
+    }
+
+    .motion-controls {
+      padding: 14px 18px 16px;
+    }
+
+    .control-row {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+    }
+
+    .control-row + .control-row { margin-top: 10px; }
+
+    .control-label {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 14px;
+      font-weight: 900;
+    }
+
+    .segmented-control {
+      min-width: 0;
+      height: 34px;
+      padding: 2px;
+      display: grid;
+      gap: 2px;
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .segmented-control.states { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .segmented-control.sides { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .segment-button {
+      min-width: 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 28px;
+      font-weight: 900;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .segment-button.active {
+      background: var(--white);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(18,18,23,.1);
+    }
+
+    .progress-control {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 42px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .progress-control input {
+      width: 100%;
+      accent-color: var(--cyan-dark);
+      cursor: pointer;
+    }
+
+    .progress-control input:disabled {
+      opacity: .42;
+      cursor: not-allowed;
+    }
+
+    .progress-readout {
+      color: var(--primary);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 900;
+      text-align: right;
+    }
+
+    .board-actions {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .board-action {
+      height: 38px;
+      border: 0;
+      border-radius: var(--radius);
+      font-size: 12px;
+      line-height: 38px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .board-action.play { background: var(--primary); color: var(--white); }
+    .board-action.expand { background: var(--cyan); color: #000; }
+
+    .timeline-strip {
+      padding: 0 18px 16px;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .timeline-step {
+      min-width: 0;
+      border-top: 2px solid #cbd1d8;
+      padding-top: 6px;
+      color: var(--muted);
+      font-size: 9px;
+      line-height: 13px;
+      font-weight: 800;
+    }
+
+    .timeline-step strong {
+      display: block;
+      color: var(--primary-light);
+      font-size: 10px;
+      line-height: 14px;
+    }
+
+    .timeline-step.active { border-color: var(--cyan-dark); color: #087984; }
+
+    .annotation-section {
+      border-top: 1px solid var(--stroke);
+      padding: 16px 18px 18px;
+    }
+
+    .annotation-section h3 {
+      margin: 0;
+      color: var(--primary);
+      font-size: 14px;
+      line-height: 20px;
+    }
+
+    .annotation-grid {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 20px;
+    }
+
+    .annotation-item {
+      padding: 10px 0;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 8px;
+      border-top: 1px solid var(--stroke);
+    }
+
+    .annotation-index {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--primary);
+      color: var(--white);
+      font-size: 10px;
+      line-height: 1;
+      font-weight: 900;
+    }
+
+    .annotation-copy strong {
+      display: block;
+      color: var(--primary);
+      font-size: 11px;
+      line-height: 16px;
+    }
+
+    .annotation-copy p {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 16px;
+    }
+
+    .legacy-notes {
+      margin-top: 14px;
+      border: 1px solid rgba(18,18,23,.1);
+      border-radius: var(--radius);
+      background: var(--white);
+      box-shadow: 0 8px 30px rgba(18,18,23,.07);
+    }
+
+    .legacy-notes summary {
+      padding: 14px 16px;
+      color: var(--primary);
+      font-size: 13px;
+      line-height: 19px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .legacy-notes .notes-card {
+      border: 0;
+      border-top: 1px solid var(--stroke);
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .notes-kicker {
+      color: var(--cyan-dark);
+      font-size: 11px;
+      line-height: 16px;
+      font-weight: 900;
+      letter-spacing: .08em;
+    }
+
+    .notes-card h2 {
+      margin: 4px 0 0;
+      color: var(--primary);
+      font-size: 20px;
+      line-height: 27px;
+    }
+
+    .notes-lead {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .logic-rule {
+      margin-top: 14px;
+      border: 1px solid var(--stroke);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--surface);
+    }
+
+    .logic-rule.live {
+      border-color: #9ce8ed;
+      background: #f1fcfd;
+    }
+
+    .logic-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--primary);
+      font-size: 14px;
+      line-height: 19px;
+      font-weight: 900;
+    }
+
+    .logic-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    .logic-rule.live .logic-dot { background: var(--cyan-dark); }
+
+    .logic-tabs {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .logic-tabs span {
+      border: 1px solid var(--stroke);
+      border-radius: 6px;
+      background: var(--white);
+      padding: 3px 7px;
+      color: var(--primary-light);
+      font-size: 11px;
+      line-height: 15px;
+      font-weight: 800;
+    }
+
+    .logic-copy {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 17px;
+    }
+
+    .logic-warning {
+      margin-top: 14px;
+      border-left: 3px solid var(--cyan-dark);
+      padding: 2px 0 2px 10px;
+      color: var(--primary-light);
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 700;
+    }
+
+    @media (min-width: 600px) {
+      body { padding: 24px 0; }
+      .phone { height: 860px; min-height: 860px; border-radius: 28px; }
+      .content { height: 778px; }
+    }
+
+    @media (min-width: 980px) {
+      .prototype-stage {
+        width: min(1120px, calc(100vw - 48px));
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 430px minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .phone { margin: 0; }
+
+      .prototype-notes {
+        width: auto;
+        margin: 0;
+        position: sticky;
+        top: 24px;
+      }
+    }
+
+    @media (max-width: 599px) {
+      .motion-board-head { padding: 16px 14px 12px; }
+      .motion-board-title h2 { font-size: 18px; line-height: 24px; }
+      .motion-controls { padding-left: 14px; padding-right: 14px; }
+      .timeline-strip { padding-left: 14px; padding-right: 14px; }
+      .annotation-section { padding-left: 14px; padding-right: 14px; }
+      .annotation-grid { grid-template-columns: 1fr; }
+      .motion-stage-content { grid-template-columns: 1fr; }
+      .stage-block.tall { display: none; }
+    }
+
+    @media (max-width: 350px) {
+      .content { padding-left: 5px; padding-right: 5px; }
+      .section { padding: 6px; }
+      .tab { font-size: 11px; }
+      .action-btn { padding: 0 8px; font-size: 13px; }
+      .button-row.preview-actions.with-live-option {
+        grid-template-columns: minmax(66px, .72fr) auto minmax(0, 1.28fr);
+        gap: 4px;
+      }
+      .live-option { min-width: 80px; padding: 0 6px; }
+      .live-title { font-size: 11px; }
+      .thumb-scroll { width: 50px; flex-basis: 50px; }
+      .control-row { grid-template-columns: 60px minmax(0, 1fr); gap: 7px; }
+      .segment-button { font-size: 10px; }
+      .timeline-step { font-size: 8px; }
+      .timeline-step strong { font-size: 9px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dock-pulse,
+      .dock-copy,
+      .dock-ring,
+      .dock-ring .fill,
+      .demo-dock.snapping {
+        transition-duration: 0ms !important;
+        animation-duration: 0ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="prototype-stage">
+  <main class="phone" aria-label="抖音资源保存类型 UI 原型">
+    <header class="app-title">抖音下载器</header>
+
+    <section class="content">
+      <div class="section resolve-section">
+        <div class="label">资源解析</div>
+        <div class="title">抖音分享文本或链接</div>
+        <textarea id="shareInput" spellcheck="false">https://v.douyin.com/jxTKa2nJ4Oc/</textarea>
+        <div class="button-row">
+          <button class="action-btn secondary" type="button" onclick="clearInput()">清除链接</button>
+          <button class="action-btn primary" type="button" onclick="parseLink()">解析资源</button>
+        </div>
+      </div>
+
+      <div class="section preview-section" id="previewSection">
+        <div class="title" id="workTitle">Myyu 的 Live 图作品</div>
+        <div class="meta" id="workMeta">作者：Myyu · Live 图（动态照片）· 10 张</div>
+
+        <div class="tabs" role="tablist" aria-label="选择保存内容">
+          <button id="primaryTab" class="tab active" role="tab" aria-selected="true" type="button" onclick="selectResource('image')">图片 10</button>
+          <button id="coverTab" class="tab" role="tab" aria-selected="false" type="button" onclick="selectResource('cover')">封面 1</button>
+          <button id="audioTab" class="tab" role="tab" aria-selected="false" type="button" onclick="selectResource('audio')">音频 1</button>
+        </div>
+
+        <div class="preview-body">
+          <div class="preview-card" id="previewCard">
+            <div class="counter" id="previewCounter">图片 1 / 10</div>
+            <div class="play-icon">▶</div>
+            <div class="media-badge" id="mediaBadge">JPG</div>
+          </div>
+          <aside class="thumb-scroll" aria-label="右侧缩略图列表">
+            <div class="thumbs" id="thumbs"></div>
+          </aside>
+        </div>
+
+        <div class="caption" id="previewCaption">图片 01</div>
+        <div class="selection-note" id="selectionNote">将保存 10 张原图；默认不保存动态视频</div>
+
+        <div class="button-row preview-actions" id="previewActions">
+          <button class="action-btn ghost" type="button" onclick="copyLink()">复制链接</button>
+          <label class="live-option" id="liveOption">
+            <input id="liveVideoToggle" type="checkbox" onchange="updateSaveChoice()" />
+            <span class="live-title">Live 视频</span>
+          </label>
+          <button class="action-btn primary" id="saveButton" type="button" onclick="startSave()">保存 10 张图片</button>
+        </div>
+      </div>
+    </section>
+
+    <nav class="bottom-nav" aria-label="底部导航">
+      <div class="nav-item active"><span>↓</span><span>提取</span></div>
+      <div class="nav-item" onclick="openMine()"><span>•</span><span>我的</span></div>
+    </nav>
+
+    <button
+      class="dock-pulse app-dock-pulse"
+      id="progressBubble"
+      type="button"
+      data-side="right"
+      data-state="resolving"
+      aria-label="解析中，正在获取作品信息"
+      onclick="toggleMainBubble()">
+      <span class="dock-copy">
+        <span class="dock-primary" data-dock-primary>解析中</span>
+        <span class="dock-secondary" data-dock-secondary>正在获取作品信息</span>
+      </span>
+      <span class="dock-orb">
+        <svg class="dock-ring" viewBox="0 0 56 56" aria-hidden="true">
+          <circle class="track" cx="28" cy="28" r="20"></circle>
+          <circle class="fill" cx="28" cy="28" r="20"></circle>
+        </svg>
+        <span class="dock-icon" data-dock-icon data-icon="download"></span>
+      </span>
+    </button>
+
+    <div class="mask" id="clipboardMask" onclick="hideClipboard()">
+      <section class="dialog" onclick="event.stopPropagation()">
+        <h2>检测到分享链接</h2>
+        <p>剪贴板中发现可解析链接，是否直接填入并解析？<br>https://v.douyin.com/jxTKa2nJ4Oc/</p>
+        <div class="button-row dialog-actions">
+          <button class="action-btn ghost" type="button" onclick="hideClipboard()">关闭</button>
+          <button class="action-btn primary" type="button" onclick="hideClipboard(); parseLink();">解析</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="sheet-mask" id="mineMask" onclick="closeMine(event)">
+      <section class="mine-sheet" onclick="event.stopPropagation()">
+        <div class="grabber"></div>
+        <h2>我的</h2>
+
+        <div class="login-card">
+          <div class="login-copy">
+            <div class="cookie-line">Cookie：sessionid 有 / sso_uid_tt 有 / ttwid 有 / csrf 有 / msToken 有。长按登录按钮可清除 Cookie。</div>
+            <div class="login-state">已登录</div>
+          </div>
+          <button class="action-btn primary" type="button">重新登录</button>
+        </div>
+
+        <div class="history-card">
+          <div class="history-title">最近下载</div>
+          <div class="history-info">成功 · Myyu 的图文作品<br>https://v.douyin.com/jxTKa2nJ4Oc/<br>文件：10 个</div>
+          <div class="button-row history">
+            <button class="action-btn primary" type="button">打开</button>
+            <button class="action-btn secondary" type="button">分享</button>
+          </div>
+          <div class="button-row history">
+            <button class="action-btn primary" type="button">重试</button>
+            <button class="action-btn secondary" type="button">删除历史</button>
+          </div>
+        </div>
+
+        <button class="action-btn ghost" style="width:100%; margin-top:14px" type="button" onclick="hideMine()">关闭</button>
+      </section>
+    </div>
+  </main>
+
+  <aside class="prototype-notes" aria-label="DockPulse 悬浮下载胶囊动效画板与 UI 批注">
+    <section class="motion-board" id="motionBoard">
+      <header class="motion-board-head">
+        <div class="motion-board-title">
+          <div class="notes-kicker">DOCKPULSE / 交互动效画板</div>
+          <h2>磁吸下载胶囊</h2>
+          <p>点击状态、拖动胶囊或播放完整时序，确认视觉密度和反馈强度。</p>
+        </div>
+        <span class="prototype-tag">待确认 UI</span>
+      </header>
+
+      <div class="motion-stage" id="motionStage" data-side="right">
+        <div class="motion-stage-appbar">
+          <span>抖音下载器</span>
+          <span class="motion-stage-context">真实页面对比环境</span>
+        </div>
+        <div class="motion-stage-content" aria-hidden="true">
+          <div>
+            <div class="stage-block">
+              <div class="stage-line strong"></div>
+              <div class="stage-line"></div>
+              <div class="stage-action"></div>
+            </div>
+            <div class="stage-block" style="margin-top:10px">
+              <div class="stage-line strong short"></div>
+              <div class="stage-line"></div>
+            </div>
+          </div>
+          <div class="stage-block tall">
+            <div class="stage-line strong"></div>
+            <div class="stage-line short"></div>
+            <div class="stage-line"></div>
+            <div class="stage-action"></div>
+          </div>
+        </div>
+
+        <button
+          class="dock-pulse demo-dock show expanded"
+          id="demoDock"
+          type="button"
+          data-side="right"
+          data-state="progress"
+          style="--dock-progress:42"
+          aria-label="正在下载，42%，8.4 / 20 MB，3.2 MB 每秒">
+          <span class="dock-copy">
+            <span class="dock-primary" data-dock-primary>正在下载 · 42%</span>
+            <span class="dock-secondary" data-dock-secondary>8.4 / 20 MB · 3.2 MB/s</span>
+          </span>
+          <span class="dock-orb">
+            <svg class="dock-ring" viewBox="0 0 56 56" aria-hidden="true">
+              <circle class="track" cx="28" cy="28" r="20"></circle>
+              <circle class="fill" cx="28" cy="28" r="20"></circle>
+            </svg>
+            <span class="dock-icon" data-dock-icon data-icon="progress">42%</span>
+          </span>
+        </button>
+
+        <span class="callout-pin pin-ring" aria-hidden="true">1</span>
+        <span class="callout-pin pin-copy" aria-hidden="true">2</span>
+        <span class="callout-pin pin-anchor" aria-hidden="true">3</span>
+        <div class="drag-guide" aria-hidden="true">
+          <span class="drag-guide-icon">↔</span>
+          <span>拖动胶囊检查拿起与左右吸附</span>
+        </div>
+      </div>
+
+      <div class="motion-controls">
+        <div class="control-row">
+          <span class="control-label">状态</span>
+          <div class="segmented-control states" aria-label="下载状态">
+            <button class="segment-button" data-state-control="resolving" type="button" onclick="setDemoState('resolving')">解析</button>
+            <button class="segment-button" data-state-control="unknown" type="button" onclick="setDemoState('unknown')">准备</button>
+            <button class="segment-button active" data-state-control="progress" type="button" onclick="setDemoState('progress')">进度</button>
+            <button class="segment-button" data-state-control="finalizing" type="button" onclick="setDemoState('finalizing')">保存</button>
+            <button class="segment-button" data-state-control="success" type="button" onclick="setDemoState('success')">完成</button>
+            <button class="segment-button" data-state-control="error" type="button" onclick="setDemoState('error')">失败</button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <label class="control-label" for="demoProgress">进度</label>
+          <div class="progress-control">
+            <input id="demoProgress" type="range" min="0" max="100" value="42" oninput="setDemoProgress(this.value)" />
+            <output class="progress-readout" id="progressReadout" for="demoProgress">42%</output>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <span class="control-label">吸附方向</span>
+          <div class="segmented-control sides" aria-label="吸附方向">
+            <button class="segment-button" data-side-control="left" type="button" onclick="setDemoSide('left')">左侧</button>
+            <button class="segment-button active" data-side-control="right" type="button" onclick="setDemoSide('right')">右侧</button>
+          </div>
+        </div>
+
+        <div class="board-actions">
+          <button class="board-action play" id="playDemoButton" type="button" onclick="playFullDemo()" title="播放从准备到完成的完整状态时序">▶&nbsp; 播放完整时序</button>
+          <button class="board-action expand" id="expandDemoButton" type="button" onclick="toggleDemoExpansion()" title="切换胶囊详情的展开和收起">↔&nbsp; 收起详情</button>
+        </div>
+      </div>
+
+      <div class="timeline-strip" aria-label="DockPulse 动效时间线">
+        <div class="timeline-step" data-timeline-step="enter"><strong>入场</strong>220ms</div>
+        <div class="timeline-step" data-timeline-step="unknown"><strong>未知进度</strong>1100ms/轮</div>
+        <div class="timeline-step" data-timeline-step="settle"><strong>收敛</strong>220ms</div>
+        <div class="timeline-step active" data-timeline-step="progress"><strong>确定进度</strong>180ms</div>
+        <div class="timeline-step" data-timeline-step="finalizing"><strong>写入相册</strong>按文件耗时</div>
+        <div class="timeline-step" data-timeline-step="result"><strong>结果反馈</strong>1.5s / 3s</div>
+      </div>
+
+      <section class="annotation-section">
+        <h3>UI 与交互批注</h3>
+        <div class="annotation-grid">
+          <div class="annotation-item">
+            <span class="annotation-index">1</span>
+            <div class="annotation-copy"><strong>高对比进度核</strong><p>56dp 触控区、52dp 半透明中性灰容器、3.5dp 青色圆头环；沿用应用黑白与青色强调色。</p></div>
+          </div>
+          <div class="annotation-item">
+            <span class="annotation-index">2</span>
+            <div class="annotation-copy"><strong>两行可扫读详情</strong><p>主行只放阶段和百分比，副行放大小与速度；高度始终 56dp，超长内容省略。</p></div>
+          </div>
+          <div class="annotation-item">
+            <span class="annotation-index">3</span>
+            <div class="annotation-copy"><strong>锚点不跳动，也不盖信息</strong><p>进度核固定在屏幕边缘；只有标题空白安全带允许状态自动展开，拖到标题或内容区域后保持紧凑球，点按才临时展开。</p></div>
+          </div>
+          <div class="annotation-item">
+            <span class="annotation-index">4</span>
+            <div class="annotation-copy"><strong>持续运动只留给圆环</strong><p>未知进度采用可变弧长旋转；常规进度不呼吸、不反复弹跳，减少工具页面干扰。</p></div>
+          </div>
+          <div class="annotation-item">
+            <span class="annotation-index">5</span>
+            <div class="annotation-copy"><strong>拖拽有拿起与落边</strong><p>越过阈值放大至 1.04 并提升阴影；吸边结束做一次横向挤压回弹。</p></div>
+          </div>
+          <div class="annotation-item">
+            <span class="annotation-index">6</span>
+            <div class="annotation-copy"><strong>结果反馈有轻重</strong><p>成功补满绿环并轻弹，停留 1.5 秒；失败转红并短促回弹，信息保留 3 秒。</p></div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <details class="legacy-notes">
+      <summary>查看原有作品识别与界面显示规则</summary>
+      <div class="notes-card">
+        <div class="notes-kicker">仅供原型与开发交接</div>
+        <h2>解析结果决定界面</h2>
+        <p class="notes-lead">作品类型由链接解析结果自动识别，用户不需要、也不能手动切换作品类型。页面始终只显示一组“保存内容”Tabs。</p>
+
+        <section class="logic-rule">
+          <div class="logic-title"><span class="logic-dot"></span>识别为视频作品</div>
+          <div class="logic-tabs"><span>视频</span><span>封面</span><span>音频</span></div>
+          <div class="logic-copy">默认选中“视频”；不显示 Live 视频勾选按钮。底部为“复制链接 + 保存视频”，切换 Tab 后保存按钮对应变为“保存封面”或“保存音频”。</div>
+        </section>
+
+        <section class="logic-rule">
+          <div class="logic-title"><span class="logic-dot"></span>识别为普通图集</div>
+          <div class="logic-tabs"><span>图片</span><span>封面</span><span>音频</span></div>
+          <div class="logic-copy">默认选中“图片”；不显示 Live 视频勾选按钮。底部为“复制链接 + 保存图片”，切换 Tab 后保存按钮对应变为“保存封面”或“保存音频”。</div>
+        </section>
+
+        <section class="logic-rule live">
+          <div class="logic-title"><span class="logic-dot"></span>识别为 Live 图作品</div>
+          <div class="logic-tabs"><span>图片</span><span>封面</span><span>音频</span><span>□ Live 视频</span></div>
+          <div class="logic-copy">默认选中“图片”。只有“解析结果 = Live 图”并且“当前 Tab = 图片”两个条件同时满足，底部才显示“复制链接 + Live 视频勾选 + 保存图片”；切换到封面或音频后隐藏勾选按钮。</div>
+        </section>
+
+        <div class="logic-warning">“Live 视频”是附加保存选项，不是作品类型 Tab。勾选后保存原图和每张图片对应的动态视频。</div>
+      </div>
+    </details>
+  </aside>
+  </div>
+
+  <script>
+    const input = document.getElementById('shareInput');
+    const previewCard = document.getElementById('previewCard');
+    const primaryTab = document.getElementById('primaryTab');
+    const coverTab = document.getElementById('coverTab');
+    const audioTab = document.getElementById('audioTab');
+    const previewCounter = document.getElementById('previewCounter');
+    const previewCaption = document.getElementById('previewCaption');
+    const selectionNote = document.getElementById('selectionNote');
+    const saveButton = document.getElementById('saveButton');
+    const liveOption = document.getElementById('liveOption');
+    const liveVideoToggle = document.getElementById('liveVideoToggle');
+    const previewActions = document.getElementById('previewActions');
+    const mediaBadge = document.getElementById('mediaBadge');
+    const workTitle = document.getElementById('workTitle');
+    const workMeta = document.getElementById('workMeta');
+    const thumbsContainer = document.getElementById('thumbs');
+    const mainDock = document.getElementById('progressBubble');
+    const demoDock = document.getElementById('demoDock');
+    const motionStage = document.getElementById('motionStage');
+    const demoProgress = document.getElementById('demoProgress');
+    const progressReadout = document.getElementById('progressReadout');
+    const expandDemoButton = document.getElementById('expandDemoButton');
+    const playDemoButton = document.getElementById('playDemoButton');
+    const stateControls = [...document.querySelectorAll('[data-state-control]')];
+    const sideControls = [...document.querySelectorAll('[data-side-control]')];
+    const timelineSteps = [...document.querySelectorAll('[data-timeline-step]')];
+
+    const works = {
+      video: {
+        title: 'Lin 的视频作品',
+        meta: '作者：Lin · 视频 · 1 个视频',
+        primary: 'video',
+        primaryLabel: '视频',
+        count: 1
+      },
+      gallery: {
+        title: 'Myyu 的图文作品',
+        meta: '作者：Myyu · 图集 · 10 张',
+        primary: 'image',
+        primaryLabel: '图片',
+        count: 10
+      },
+      live: {
+        title: 'Myyu 的 Live 图作品',
+        meta: '作者：Myyu · Live 图（动态照片）· 10 张',
+        primary: 'image',
+        primaryLabel: '图片',
+        count: 10
+      }
+    };
+
+    const requestedDemoWork = new URLSearchParams(window.location.search).get('work');
+    let activeWork = works[requestedDemoWork] ? requestedDemoWork : 'live';
+    let activeResource = works[activeWork].primary;
+    let activeIndex = 0;
+    let demoProgressValue = 42;
+    let mainSequenceTimers = [];
+    let demoSequenceTimers = [];
+    let demoSequencePlaying = false;
+    let demoDrag = null;
+    let suppressDemoClick = false;
+
+    function parseLink() {
+      // 正式应用中 activeWork 由链接解析结果返回；原型仅用 ?work=video/gallery/live 演示三种结果。
+      clearMainSequence();
+      mainDock.classList.remove('show');
+      renderDock(mainDock, 'resolving', 0, false);
+      setDockExpanded(mainDock, true);
+      requestAnimationFrame(() => mainDock.classList.add('show'));
+      queueMainStep(900, () => setDockExpanded(mainDock, false));
+      queueMainStep(1350, () => {
+        activeResource = works[activeWork].primary;
+        activeIndex = 0;
+        liveVideoToggle.checked = false;
+        renderPreview();
+        document.getElementById('previewSection').style.display = 'flex';
+        mainDock.classList.remove('show');
+        document.getElementById('previewSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+
+    function clearInput() {
+      input.value = '';
+      document.getElementById('previewSection').style.display = 'none';
+    }
+
+    function selectResource(type) {
+      activeResource = type;
+      activeIndex = 0;
+      renderPreview();
+    }
+
+    function selectThumb(index) {
+      activeIndex = index;
+      updateMediaDetails();
+      [...thumbsContainer.children].forEach((thumb, i) => {
+        thumb.classList.toggle('active', i === index);
+      });
+    }
+
+    function renderPreview() {
+      const work = works[activeWork];
+      const tabs = [primaryTab, coverTab, audioTab];
+      const tabTypes = [work.primary, 'cover', 'audio'];
+
+      workTitle.textContent = work.title;
+      workMeta.textContent = work.meta;
+      primaryTab.textContent = `${work.primaryLabel} ${work.count}`;
+      primaryTab.onclick = () => selectResource(work.primary);
+      tabs.forEach((tab, index) => {
+        const isActive = activeResource === tabTypes[index];
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', String(isActive));
+      });
+
+      // UI 规则：只有解析为 Live 图作品且当前选择图片时，才展示 Live 视频附加保存选项。
+      const showLiveOption = activeWork === 'live' && activeResource === 'image';
+      liveOption.hidden = !showLiveOption;
+      previewActions.classList.toggle('with-live-option', showLiveOption);
+      previewCard.className = `preview-card mode-${activeResource}`;
+      renderThumbs();
+      updateMediaDetails();
+      updateSaveChoice();
+    }
+
+    function renderThumbs() {
+      const work = works[activeWork];
+      const count = activeResource === work.primary ? work.count : 1;
+      const visibleCount = Math.min(count, 5);
+      thumbsContainer.innerHTML = '';
+
+      for (let index = 0; index < visibleCount; index += 1) {
+        const thumb = document.createElement('button');
+        thumb.type = 'button';
+        thumb.className = `thumb ${activeResource} ${index === activeIndex ? 'active' : ''}`;
+        thumb.setAttribute('aria-label', `${resourceName()} ${index + 1}`);
+        thumb.onclick = () => selectThumb(index);
+        if (activeResource === 'video') thumb.textContent = '▶';
+        if (activeResource === 'audio') thumb.textContent = '♫';
+        thumbsContainer.appendChild(thumb);
+      }
+    }
+
+    function resourceName() {
+      return { image: '图片', video: '视频', cover: '封面', audio: '音频' }[activeResource];
+    }
+
+    function updateMediaDetails() {
+      const work = works[activeWork];
+      const count = activeResource === work.primary ? work.count : 1;
+      const name = resourceName();
+      const captions = {
+        image: `原图 ${String(activeIndex + 1).padStart(2, '0')}`,
+        video: '无水印视频 · 1080P',
+        cover: '作品封面 · 原始尺寸',
+        audio: '作品原声 · MP3'
+      };
+      const badges = { image: 'JPG', video: 'MP4', cover: 'JPG', audio: 'MP3' };
+
+      previewCounter.textContent = `${name} ${activeIndex + 1} / ${count}`;
+      previewCaption.textContent = captions[activeResource];
+      mediaBadge.textContent = badges[activeResource];
+    }
+
+    function updateSaveChoice() {
+      const work = works[activeWork];
+      const withLiveVideo = activeWork === 'live' && activeResource === 'image' && liveVideoToggle.checked;
+      const copy = {
+        video: ['保存视频', '保存无水印视频到系统相册'],
+        cover: ['保存封面', '仅保存当前作品的原始封面'],
+        audio: ['保存音频', '提取并保存当前作品的原声'],
+        image: [`保存 ${work.count} 张图片`, activeWork === 'live' ? `将保存 ${work.count} 张原图；默认不保存动态视频` : '保存全部原图到系统相册']
+      };
+
+      if (withLiveVideo) {
+        saveButton.textContent = `保存图片 + Live 视频`;
+        selectionNote.textContent = `将保存 ${work.count} 张原图及 ${work.count} 个对应动态视频`;
+        return;
+      }
+
+      saveButton.textContent = copy[activeResource][0];
+      selectionNote.textContent = copy[activeResource][1];
+    }
+
+    function dockCopyFor(state, progress) {
+      const percent = Math.round(Number(progress));
+      const downloaded = (20 * percent / 100).toFixed(1);
+      if (state === 'resolving') {
+        return {
+          primary: '解析中',
+          secondary: '正在获取作品信息',
+          iconText: '',
+          iconType: 'download',
+          aria: '解析中，正在获取作品信息'
+        };
+      }
+      if (state === 'unknown') {
+        return {
+          primary: '准备下载',
+          secondary: '正在建立下载任务',
+          iconText: '',
+          iconType: 'download',
+          aria: '准备下载，正在建立下载任务'
+        };
+      }
+      if (state === 'finalizing') {
+        return {
+          primary: '正在保存',
+          secondary: '正在写入系统相册',
+          iconText: '',
+          iconType: 'save',
+          aria: '正在保存，正在写入系统相册'
+        };
+      }
+      if (state === 'success') {
+        return {
+          primary: '保存完成',
+          secondary: '10 个文件已保存到相册',
+          iconText: '✓',
+          iconType: 'success',
+          aria: '保存完成，10 个文件已保存到相册'
+        };
+      }
+      if (state === 'error') {
+        return {
+          primary: '下载失败',
+          secondary: '点按可前往最近下载重试',
+          iconText: '!',
+          iconType: 'error',
+          aria: '下载失败，点按可前往最近下载重试'
+        };
+      }
+      return {
+        primary: `正在下载 · ${percent}%`,
+        secondary: `${downloaded} / 20 MB · 3.2 MB/s`,
+        iconText: `${percent}%`,
+        iconType: 'progress',
+        aria: `正在下载，${percent}%，${downloaded} / 20 MB，3.2 MB 每秒`
+      };
+    }
+
+    function renderDock(dock, state, progress = demoProgressValue, withFeedback = true) {
+      const normalizedProgress = state === 'success' || state === 'error'
+        ? 100
+        : Math.max(0, Math.min(100, Number(progress)));
+      const copy = dockCopyFor(state, normalizedProgress);
+      dock.dataset.state = state;
+      dock.style.setProperty('--dock-progress', normalizedProgress);
+      dock.querySelector('[data-dock-primary]').textContent = copy.primary;
+      dock.querySelector('[data-dock-secondary]').textContent = copy.secondary;
+      const icon = dock.querySelector('[data-dock-icon]');
+      icon.textContent = copy.iconText;
+      icon.dataset.icon = copy.iconType;
+      dock.setAttribute('aria-label', copy.aria);
+
+      if (!withFeedback || (state !== 'success' && state !== 'error')) return;
+      const feedbackClass = state === 'success' ? 'status-pop' : 'status-reject';
+      dock.classList.remove('status-pop', 'status-reject');
+      void dock.offsetWidth;
+      dock.classList.add(feedbackClass);
+      window.setTimeout(() => dock.classList.remove(feedbackClass), 420);
+    }
+
+    function setDockExpanded(dock, expanded) {
+      dock.classList.toggle('expanded', expanded);
+      if (dock === demoDock) {
+        expandDemoButton.innerHTML = expanded ? '↔&nbsp; 收起详情' : '↔&nbsp; 展开详情';
+      }
+    }
+
+    function setTimelineStep(step) {
+      timelineSteps.forEach(item => item.classList.toggle('active', item.dataset.timelineStep === step));
+    }
+
+    function syncDemoControls(state) {
+      stateControls.forEach(button => button.classList.toggle('active', button.dataset.stateControl === state));
+      demoProgress.disabled = state !== 'progress';
+      const timelineState = state === 'success' || state === 'error'
+        ? 'result'
+        : state === 'resolving'
+          ? 'unknown'
+          : state;
+      setTimelineStep(timelineState);
+    }
+
+    function stopDemoSequence() {
+      demoSequenceTimers.forEach(window.clearTimeout);
+      demoSequenceTimers = [];
+      demoSequencePlaying = false;
+      playDemoButton.innerHTML = '▶&nbsp; 播放完整时序';
+    }
+
+    function renderDemoState(state, progress = demoProgressValue, withFeedback = true) {
+      if (state === 'progress') {
+        demoProgressValue = Math.max(0, Math.min(100, Number(progress)));
+        demoProgress.value = demoProgressValue;
+        progressReadout.value = `${Math.round(demoProgressValue)}%`;
+        progressReadout.textContent = `${Math.round(demoProgressValue)}%`;
+      }
+      renderDock(demoDock, state, demoProgressValue, withFeedback);
+      syncDemoControls(state);
+    }
+
+    function setDemoState(state) {
+      stopDemoSequence();
+      renderDemoState(state);
+      if (state === 'success' || state === 'error') setDockExpanded(demoDock, true);
+    }
+
+    function setDemoProgress(value) {
+      stopDemoSequence();
+      renderDemoState('progress', value, false);
+    }
+
+    function toggleDemoExpansion() {
+      stopDemoSequence();
+      setDockExpanded(demoDock, !demoDock.classList.contains('expanded'));
+    }
+
+    function toggleMainBubble() {
+      setDockExpanded(mainDock, !mainDock.classList.contains('expanded'));
+    }
+
+    function updateSideControls(side) {
+      sideControls.forEach(button => button.classList.toggle('active', button.dataset.sideControl === side));
+    }
+
+    function settleDemoAtSide(side, animate = true) {
+      const stageRect = motionStage.getBoundingClientRect();
+      const dockRect = demoDock.getBoundingClientRect();
+      const currentLeft = dockRect.left - stageRect.left;
+      const targetLeft = side === 'left' ? 14 : motionStage.clientWidth - dockRect.width - 14;
+
+      demoDock.dataset.side = side;
+      motionStage.dataset.side = side;
+      updateSideControls(side);
+      demoDock.style.right = 'auto';
+      demoDock.style.left = `${currentLeft}px`;
+      if (animate) demoDock.classList.add('snapping');
+
+      requestAnimationFrame(() => {
+        demoDock.style.left = `${targetLeft}px`;
+      });
+
+      window.setTimeout(() => {
+        demoDock.classList.remove('snapping');
+        demoDock.style.left = '';
+        demoDock.style.right = '';
+        demoDock.classList.remove('dock-bump');
+        void demoDock.offsetWidth;
+        demoDock.classList.add('dock-bump');
+        window.setTimeout(() => demoDock.classList.remove('dock-bump'), 380);
+      }, animate ? 380 : 20);
+    }
+
+    function setDemoSide(side) {
+      stopDemoSequence();
+      if (demoDrag) return;
+      settleDemoAtSide(side, true);
+    }
+
+    function queueDemoStep(delay, action) {
+      demoSequenceTimers.push(window.setTimeout(action, delay));
+    }
+
+    function playFullDemo() {
+      stopDemoSequence();
+      demoSequencePlaying = true;
+      playDemoButton.innerHTML = '■&nbsp; 正在演示';
+      demoDock.classList.remove('show');
+      renderDemoState('resolving', 0, false);
+      setDockExpanded(demoDock, true);
+      setTimelineStep('enter');
+
+      queueDemoStep(60, () => demoDock.classList.add('show'));
+      queueDemoStep(280, () => setTimelineStep('unknown'));
+      queueDemoStep(760, () => renderDemoState('unknown', 0, false));
+      queueDemoStep(920, () => setDockExpanded(demoDock, false));
+      queueDemoStep(1500, () => {
+        renderDemoState('progress', 8, false);
+        setTimelineStep('settle');
+        setDockExpanded(demoDock, true);
+      });
+      queueDemoStep(1720, () => setTimelineStep('progress'));
+      queueDemoStep(2380, () => setDockExpanded(demoDock, false));
+      queueDemoStep(3050, () => renderDemoState('progress', 42, false));
+      queueDemoStep(3920, () => renderDemoState('progress', 68, false));
+      queueDemoStep(4860, () => {
+        renderDemoState('finalizing', 100, false);
+        setTimelineStep('finalizing');
+        setDockExpanded(demoDock, true);
+      });
+      queueDemoStep(5720, () => {
+        renderDemoState('success', 100, true);
+        setDockExpanded(demoDock, true);
+      });
+      queueDemoStep(7220, () => setDockExpanded(demoDock, false));
+      queueDemoStep(7620, () => {
+        demoSequencePlaying = false;
+        playDemoButton.innerHTML = '▶&nbsp; 再次播放';
+      });
+    }
+
+    function clearMainSequence() {
+      mainSequenceTimers.forEach(window.clearTimeout);
+      mainSequenceTimers = [];
+    }
+
+    function queueMainStep(delay, action) {
+      mainSequenceTimers.push(window.setTimeout(action, delay));
+    }
+
+    function startSave() {
+      clearMainSequence();
+      mainDock.classList.remove('show');
+      renderDock(mainDock, 'unknown', 0, false);
+      setDockExpanded(mainDock, true);
+      requestAnimationFrame(() => mainDock.classList.add('show'));
+
+      queueMainStep(900, () => setDockExpanded(mainDock, false));
+      queueMainStep(1500, () => {
+        renderDock(mainDock, 'progress', 8, false);
+        setDockExpanded(mainDock, true);
+      });
+      queueMainStep(2400, () => setDockExpanded(mainDock, false));
+      queueMainStep(3100, () => renderDock(mainDock, 'progress', 42, false));
+      queueMainStep(4000, () => renderDock(mainDock, 'progress', 68, false));
+      queueMainStep(4900, () => {
+        renderDock(mainDock, 'finalizing', 100, false);
+        setDockExpanded(mainDock, true);
+      });
+      queueMainStep(5750, () => {
+        renderDock(mainDock, 'success', 100, true);
+        setDockExpanded(mainDock, true);
+      });
+      queueMainStep(7250, () => mainDock.classList.remove('show'));
+      toast(`开始${saveButton.textContent}`);
+    }
+
+    function beginDemoDrag(event) {
+      if (event.button !== 0) return;
+      stopDemoSequence();
+      const stageRect = motionStage.getBoundingClientRect();
+      const dockRect = demoDock.getBoundingClientRect();
+      const side = demoDock.dataset.side;
+      const collapsedLeft = side === 'right'
+        ? dockRect.right - stageRect.left - 56
+        : dockRect.left - stageRect.left;
+      demoDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        left: collapsedLeft,
+        top: dockRect.top - stageRect.top,
+        moving: false
+      };
+      demoDock.setPointerCapture(event.pointerId);
+    }
+
+    function moveDemoDrag(event) {
+      if (!demoDrag || event.pointerId !== demoDrag.pointerId) return;
+      const deltaX = event.clientX - demoDrag.startX;
+      const deltaY = event.clientY - demoDrag.startY;
+      if (!demoDrag.moving && Math.hypot(deltaX, deltaY) < 6) return;
+
+      if (!demoDrag.moving) {
+        demoDrag.moving = true;
+        suppressDemoClick = true;
+        setDockExpanded(demoDock, false);
+        demoDock.classList.add('dragging', 'lifted');
+        demoDock.style.right = 'auto';
+      }
+
+      const nextLeft = Math.max(14, Math.min(motionStage.clientWidth - 70, demoDrag.left + deltaX));
+      const nextTop = Math.max(12, Math.min(motionStage.clientHeight - 68, demoDrag.top + deltaY));
+      demoDock.style.left = `${nextLeft}px`;
+      demoDock.style.top = `${nextTop}px`;
+      event.preventDefault();
+    }
+
+    function endDemoDrag(event) {
+      if (!demoDrag || event.pointerId !== demoDrag.pointerId) return;
+      const wasMoving = demoDrag.moving;
+      demoDrag = null;
+      demoDock.classList.remove('dragging', 'lifted');
+      if (!wasMoving) return;
+
+      const dockRect = demoDock.getBoundingClientRect();
+      const stageRect = motionStage.getBoundingClientRect();
+      const centerX = dockRect.left - stageRect.left + dockRect.width / 2;
+      const targetSide = centerX < motionStage.clientWidth / 2 ? 'left' : 'right';
+      settleDemoAtSide(targetSide, true);
+      window.setTimeout(() => { suppressDemoClick = false; }, 80);
+    }
+
+    function copyLink() { toast('已复制链接'); }
+    function toast(text) { console.log(text); }
+    function hideClipboard() { document.getElementById('clipboardMask').classList.remove('show'); }
+    function openMine() { document.getElementById('mineMask').classList.add('show'); }
+    function hideMine() { document.getElementById('mineMask').classList.remove('show'); }
+    function closeMine(event) { if (event.target.id === 'mineMask') hideMine(); }
+
+    demoDock.addEventListener('pointerdown', beginDemoDrag);
+    demoDock.addEventListener('pointermove', moveDemoDrag);
+    demoDock.addEventListener('pointerup', endDemoDrag);
+    demoDock.addEventListener('pointercancel', endDemoDrag);
+    demoDock.addEventListener('click', () => {
+      if (suppressDemoClick) return;
+      toggleDemoExpansion();
+    });
+
+    renderPreview();
+  </script>
+</body>
+</html>

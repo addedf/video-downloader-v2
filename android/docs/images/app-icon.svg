@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="216" height="216" viewBox="0 0 108 108" role="img" aria-label="Video Downloader icon">
+  <rect width="108" height="108" fill="#050507"/>
+  <path fill="#15151D" d="M0 0h108v45c-19 9-38 12-56 8C29 48 15 35 0 37z"/>
+  <path fill="#0B2F34" fill-opacity=".75" d="M80 0h28v108H52c21-24 31-53 28-108z"/>
+  <path fill="#00E5F0" fill-opacity=".88" d="M32 24h36c7.2 0 13 5.8 13 13v34c0 7.2-5.8 13-13 13H32c-7.2 0-13-5.8-13-13V37c0-7.2 5.8-13 13-13z"/>
+  <path fill="#FF2D55" fill-opacity=".86" d="M40 18h36c7.2 0 13 5.8 13 13v34c0 7.2-5.8 13-13 13H40c-7.2 0-13-5.8-13-13V31c0-7.2 5.8-13 13-13z"/>
+  <path fill="#FFFFFF" d="M36 27h36c5.5 0 10 4.5 10 10v34c0 5.5-4.5 10-10 10H36c-5.5 0-10-4.5-10-10V37c0-5.5 4.5-10 10-10z"/>
+  <path fill="#111117" d="M39 34h30c3.3 0 6 2.7 6 6v27c0 3.3-2.7 6-6 6H39c-3.3 0-6-2.7-6-6V40c0-3.3 2.7-6 6-6z"/>
+  <path fill="#00E5F0" d="M47 46v16l14-8z"/>
+  <path fill="#FFFFFF" d="M60 51h8v9h6L64 70 54 60h6z"/>
+  <path fill="#FF2D55" d="M46 76h36v6H46z"/>
+  <path fill="#00E5F0" d="M26 76h20v6H26z"/>
+</svg>

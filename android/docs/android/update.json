@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "versionCode": 11,
+  "versionName": "2.3.4",
+  "minSupportedVersionCode": 5,
+  "apkUrl": "https://updates.menkange.com/android/DouYinDownloader-v2.3.4-arm64-v8a.apk",
+  "sha256": "8762b469f9688c4e4b3f058b57b7cc9847b22733ce368977bc774c4bc297f045",
+  "changelog": "修复图集和 Live 图保存封面时可能命中带水印封面的问题；封面现在直接复用第一张作品内容最终选中的完整无水印图片地址。",
+  "publishedAt": "2026-08-04T18:04:17Z"
+}
