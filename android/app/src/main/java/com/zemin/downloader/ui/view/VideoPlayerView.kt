@@ -51,6 +51,7 @@ class VideoPlayerView @JvmOverloads constructor(
     private var muted = false
     private var autoPlay = true
     private var playbackErrorListener: (() -> Unit)? = null
+    private val playbackGate = VideoPlaybackGate()
 
     private var fullscreenActivity: ComponentActivity? = null
     private var originalParent: ViewGroup? = null
@@ -126,8 +127,9 @@ class VideoPlayerView @JvmOverloads constructor(
         autoPlay: Boolean = true,
         onError: (() -> Unit)? = null,
     ) {
-        resetPlaybackState()
+        stopPlayback()
         this.autoPlay = autoPlay
+        playbackGate.activateSource(autoPlay)
         playbackErrorListener = onError
         visibility = View.VISIBLE
         statusText.visibility = View.GONE
@@ -138,17 +140,33 @@ class VideoPlayerView @JvmOverloads constructor(
         videoSurface.requestFocus()
     }
 
+    fun onHostResume() {
+        playbackGate.onHostResume()
+    }
+
+    fun onHostPause() {
+        playbackGate.onHostPause()
+        pausePlayback()
+    }
+
     fun pausePlayback() {
-        if (!isPrepared || !videoSurface.isPlaying) return
-        videoSurface.pause()
+        autoPlay = false
+        if (isPrepared && videoSurface.isPlaying) {
+            videoSurface.pause()
+            showControls(scheduleHide = false)
+        }
         updateControlState()
-        showControls(scheduleHide = false)
     }
 
     fun stopPlayback() {
         if (isFullscreen) exitFullscreen()
+        playbackGate.clearSource()
+        autoPlay = false
+        playbackErrorListener = null
         handler.removeCallbacksAndMessages(null)
+        runCatching { videoSurface.pause() }
         runCatching { videoSurface.stopPlayback() }
+        runCatching { videoSurface.setVideoURI(null) }
         resetPlaybackState()
         statusText.visibility = View.GONE
     }
@@ -197,6 +215,12 @@ class VideoPlayerView @JvmOverloads constructor(
 
     private fun setupMediaListeners() {
         videoSurface.setOnPreparedListener { player ->
+            if (!playbackGate.hasActiveSource()) {
+                runCatching { player.setVolume(0f, 0f) }
+                runCatching { videoSurface.stopPlayback() }
+                resetPlaybackState()
+                return@setOnPreparedListener
+            }
             mediaPlayer = player
             isPrepared = true
             player.isLooping = true
@@ -207,7 +231,7 @@ class VideoPlayerView @JvmOverloads constructor(
             statusText.visibility = View.GONE
             centerControls.visibility = View.VISIBLE
             seekBar.max = player.duration.coerceAtLeast(1)
-            if (autoPlay) videoSurface.start()
+            if (playbackGate.shouldAutoPlayOnPrepared()) videoSurface.start()
             updateControlState()
             handler.removeCallbacks(progressUpdater)
             handler.post(progressUpdater)
@@ -218,6 +242,7 @@ class VideoPlayerView @JvmOverloads constructor(
             showControls(scheduleHide = false)
         }
         videoSurface.setOnErrorListener { _, _, _ ->
+            if (!playbackGate.hasActiveSource()) return@setOnErrorListener true
             handler.removeCallbacks(progressUpdater)
             isPrepared = false
             mediaPlayer = null
