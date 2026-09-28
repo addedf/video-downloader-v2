@@ -476,43 +476,81 @@
                 android:id="@+id/loginSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:background="@drawable/bg_section_login"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_section_download"
+                android:orientation="vertical"
                 android:padding="12dp">
 
-                <LinearLayout
-                    android:layout_width="0dp"
+                <TextView
+                    android:id="@+id/tvLoginHint"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:text="@string/main_login_douyin_hint"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="12sp" />
 
-                    <TextView
-                        android:id="@+id/accountDesc"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/main_account_default"
-                        android:textColor="@color/dy_text_muted"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvLoginState"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="@string/main_status_not_logged_in"
-                        android:textColor="@color/dy_primary_light"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/tvLoginStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:textColor="@color/dy_primary_light"
+                    android:textSize="13sp" />
 
                 <com.zemin.downloader.ui.view.DyActionButton
                     android:id="@+id/btnLogin"
-                    android:layout_width="wrap_content"
-                    android:layout_height="44dp"
-                    android:layout_marginStart="10dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="10dp"
                     android:text="@string/main_login_douyin" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/exceptionSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_section_download"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/main_exception_log_title"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/tvExceptionSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/dy_primary_light"
+                    android:textSize="14sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnExceptionLogs"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_exception_log_open" />
+
+                    <com.zemin.downloader.ui.view.DyActionButton
+                        android:id="@+id/btnExceptionLogsClear"
+                        android:layout_width="0dp"
+                        android:layout_height="42dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="@string/main_exception_log_clear" />
+                </LinearLayout>
             </LinearLayout>
 
             <LinearLayout

@@ -17,30 +17,36 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.webkit.CookieManager
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.addCallback
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.zemin.downloader.R
 import com.zemin.downloader.common.DownloadProgressListener
 import com.zemin.downloader.common.PyResolveResult
+import com.zemin.downloader.common.bean.PyDiagnosticsResponse
 import com.zemin.downloader.common.ResolvedResource
 import com.zemin.downloader.common.bean.DownloadRequest
 import com.zemin.downloader.common.bean.DownloadSelection
+import com.zemin.downloader.common.bean.DownloadSnapshot
+import com.zemin.downloader.common.bean.DownloadSnapshotLiveVideo
+import com.zemin.downloader.common.bean.DownloadSnapshotResource
 import com.zemin.downloader.common.bean.DownloadSource
 import com.zemin.downloader.common.base.BaseActivity
 import com.zemin.downloader.common.core.BridgeAbilityManager
 import com.zemin.downloader.common.core.DownloadModule
-import com.zemin.downloader.common.core.LoginModule
 import com.zemin.downloader.common.core.StoreModule
 import com.zemin.downloader.common.core.currentDownloadType
 import com.zemin.downloader.common.core.currentTitle
 import com.zemin.downloader.common.core.currentType
 import com.zemin.downloader.common.util.DownloadHistoryRecord
 import com.zemin.downloader.common.util.DownloadHistoryStore
+import com.zemin.downloader.common.util.ExceptionLogRecord
+import com.zemin.downloader.common.util.ExceptionLogStore
 import com.zemin.downloader.common.util.formatBytes
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
@@ -51,6 +57,7 @@ import com.zemin.downloader.ui.util.PlatformResolver
 import com.zemin.downloader.ui.util.extractSharedText
 import com.zemin.downloader.ui.preview.PreviewUiPolicy
 import com.zemin.downloader.ui.preview.PreviewImageController
+import com.zemin.downloader.ui.preview.PreviewRequestPolicy
 import com.zemin.downloader.ui.preview.ResourceTab
 import com.zemin.downloader.ui.view.DyActionButton
 import com.zemin.downloader.ui.view.ProgressBubbleDockSide
@@ -67,10 +74,6 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
-    private val loginLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            refreshLoginState()
-    }
     // Activity fields are initialized before Context.attachBaseContext. Defer construction because
     // AppUpdateManager reads applicationContext and SharedPreferences in its initializer.
     private val appUpdateManager by lazy(LazyThreadSafetyMode.NONE) { AppUpdateManager(this) }
@@ -111,13 +114,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.videoPreview.bindFullscreen(this)
         readSharedText(intent)
         appUpdateManager.checkOnStart()
-        binding.btnLogin.setOnClickListener {
-            loginLauncher.launch(Intent(this, LoginActivity::class.java))
-        }
-        binding.btnLogin.setOnLongClickListener {
-            clearDouyinCookies()
-            true
-        }
         binding.btnDownload.setOnClickListener {
             val input = binding.etUrl.text.toString().trim()
             when {
@@ -179,6 +175,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             UiMotion.performHaptic(binding.btnMine, UiMotion.Haptic.TICK)
             showMineSheet()
         }
+        binding.btnLogin.setOnClickListener {
+            UiMotion.performHaptic(binding.btnLogin, UiMotion.Haptic.TICK)
+            startActivity(Intent(this, LoginActivity::class.java))
+        }
+        binding.btnExceptionLogs.setOnClickListener { showExceptionLogsDialog() }
+        binding.btnExceptionLogsClear.setOnClickListener {
+            ExceptionLogStore.clear()
+            refreshExceptionLogUi()
+            toast(getString(R.string.main_exception_log_cleared))
+        }
         binding.btnCloseMineSheet.setOnClickListener { hideSheets() }
         binding.dialogMask.setOnClickListener { hideClipboardDialog() }
         binding.clipboardDialogPanel.setOnClickListener { }
@@ -200,11 +206,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     override fun onResume() {
         super.onResume()
+        binding.videoPreview.onHostResume()
+        refreshLoginUi()
         scheduleClipboardCheck()
     }
 
     override fun onPause() {
-        binding.videoPreview.pausePlayback()
+        binding.videoPreview.onHostPause()
         super.onPause()
     }
 
@@ -234,8 +242,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             if (currentDownloadType != result.downloadType) {
                 BridgeAbilityManager.update(result.downloadType)
             }
-            if (!ensureLoggedIn()) return@launch
-
             setUiEnabled(false)
             cancelProgressBubbleHide()
             binding.progressBubble.showResolving(
@@ -246,12 +252,45 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             try {
                 val preview = DownloadModule.resolve(result.normalizedInput)
                 if (!preview.ok) {
+                    recordResolveException(
+                        inputText = result.normalizedInput,
+                        stage = "解析结果校验",
+                        error = preview.error ?: preview.message,
+                        responseSummary = preview.diagnostics?.responseSummary
+                            ?.takeIf { it.isNotBlank() } ?: buildResolveResponseSummary(preview),
+                        retryInfo = preview.diagnostics?.let {
+                            "重试 ${it.retryCount} 次；Cookie 兜底：${if (it.fallbackUsed) "已使用" else "未使用"}"
+                        } ?: "可重新解析；登录后可尝试 Cookie 兜底",
+                        channelOverride = preview.diagnostics?.channel,
+                        stageOverride = preview.diagnostics?.stages?.lastOrNull()?.name,
+                        diagnostics = preview.diagnostics,
+                    )
                     showError(preview.error ?: preview.message)
                     return@launch
                 }
                 setInputText(result.normalizedInput)
+                if (preview.diagnostics?.channel == "cookie_fallback") {
+                    recordResolveException(
+                        inputText = result.normalizedInput,
+                        stage = preview.diagnostics?.stages?.lastOrNull()?.name ?: "resolve_cookie_fallback",
+                        error = "匿名解析失败，Cookie 兜底解析成功",
+                        responseSummary = preview.diagnostics?.responseSummary
+                            ?.takeIf { it.isNotBlank() } ?: buildResolveResponseSummary(preview),
+                        retryInfo = "匿名解析失败后使用 Cookie 兜底成功",
+                        channelOverride = "cookie_fallback",
+                        statusOverride = "兜底成功",
+                        diagnostics = preview.diagnostics,
+                    )
+                }
                 renderPreview(result.normalizedInput, preview)
             } catch (e: Exception) {
+                recordResolveException(
+                    inputText = result.normalizedInput,
+                    stage = "解析调用",
+                    error = e.message ?: e::class.java.simpleName,
+                    responseSummary = "客户端异常：${e::class.java.simpleName}",
+                    retryInfo = "可重新解析；登录后可尝试 Cookie 兜底",
+                )
                 showError(
                     getString(
                         R.string.main_error_exception,
@@ -265,23 +304,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         }
     }
 
-    private fun ensureLoggedIn(): Boolean {
-        if (!LoginModule.needLogin) return true
-        val loggedIn = LoginModule.isLoggedIn(StoreModule.getCookieString().orEmpty())
-        if (loggedIn) return true
-
-        showError(getString(R.string.main_toast_need_login, currentTitle))
-        loginLauncher.launch(Intent(this, LoginActivity::class.java))
-        return false
-    }
-
     private fun startDownload(
         shareText: String,
         preview: PyResolveResult? = null,
         request: DownloadRequest? = null,
     ) {
-        if (!ensureLoggedIn()) return
-
         isDownloading = true
         setUiEnabled(false)
         cancelProgressBubbleHide()
@@ -355,6 +382,20 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                         ProgressBubbleStage.ERROR
                     )
                     val errorMessage = result.error ?: result.message
+                    recordResolveException(
+                        inputText = shareText,
+                        operation = "下载",
+                        stage = result.diagnostics?.stages?.lastOrNull()?.name ?: "下载保存",
+                        error = errorMessage,
+                        responseSummary = result.diagnostics?.responseSummary
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "ok=${result.ok}; success=${result.success}; failed=${result.failed}",
+                        retryInfo = result.diagnostics?.let {
+                            "重试 ${it.retryCount} 次；Cookie 兜底：${if (it.fallbackUsed) "已使用" else "未使用"}"
+                        } ?: "可重试下载",
+                        channelOverride = result.diagnostics?.channel,
+                        diagnostics = result.diagnostics,
+                    )
                     saveDownloadHistory(
                         sourceUrl = historySourceUrl,
                         title = historyTitle,
@@ -373,6 +414,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 val errorMessage = getString(
                     R.string.main_error_exception,
                     e.message ?: getString(R.string.main_error_unknown)
+                )
+                recordResolveException(
+                    inputText = shareText,
+                    operation = "下载",
+                    stage = "下载调用",
+                    error = errorMessage,
+                    responseSummary = "客户端异常：${e::class.java.simpleName}",
+                    retryInfo = "可重试下载",
                 )
                 saveDownloadHistory(
                     sourceUrl = historySourceUrl,
@@ -544,19 +593,74 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun buildDownloadRequest(preview: PyResolveResult): DownloadRequest? {
-        if (preview.schemaVersion != 2 || currentDownloadType != DownloadType.DOU_YIN) return null
+        if (preview.schemaVersion != 2) return null
         val sourceUrl = preview.sourceUrl?.takeIf { it.isNotBlank() }
             ?: currentPreviewInput.orEmpty()
         val sourceId = preview.sourceId.orEmpty()
         if (sourceUrl.isBlank() || sourceId.isBlank()) return null
+        val snapshotResources = preview.resources.asSequence()
+            .filter { it.id.isNotBlank() && it.mediaType in setOf("video", "image", "cover", "audio") }
+            .mapNotNull { resource ->
+                val downloadUrls = resource.downloadUrls
+                    .filter { it.startsWith("https://") }
+                    .distinct()
+                    .take(8)
+                if (downloadUrls.isEmpty()) return@mapNotNull null
+                DownloadSnapshotResource(
+                    id = resource.id,
+                    index = resource.index,
+                    type = resource.mediaType,
+                    title = resource.title,
+                    downloadUrls = downloadUrls,
+                    width = resource.width,
+                    height = resource.height,
+                    durationMs = resource.durationMs,
+                    formatHint = resource.formatHint,
+                    liveVideo = resource.liveVideo?.let { live ->
+                        DownloadSnapshotLiveVideo(
+                            available = live.available,
+                            downloadUrls = live.downloadUrls
+                                .filter { it.startsWith("https://") }
+                                .distinct()
+                                .take(8),
+                            width = live.width,
+                            height = live.height,
+                            durationMs = live.durationMs,
+                            formatHint = live.formatHint,
+                        )
+                    },
+                )
+            }
+            .take(100)
+            .toList()
         return DownloadRequest(
-            source = DownloadSource(url = sourceUrl, id = sourceId),
+            source = DownloadSource(
+                platform = when (currentDownloadType) {
+                    DownloadType.DOU_YIN -> "douyin"
+                    DownloadType.XIAO_HONG_SHU -> "xiaohongshu"
+                },
+                url = sourceUrl,
+                id = sourceId,
+            ),
             expectedWorkType = preview.mediaType.orEmpty(),
             selection = DownloadSelection(
                 resourceType = selectedResourceTab.resourceType,
                 includeLiveVideo = binding.checkLiveVideo.visibility == View.VISIBLE &&
                     binding.checkLiveVideo.isChecked,
             ),
+            snapshot = if (
+                currentDownloadType == DownloadType.DOU_YIN && snapshotResources.isNotEmpty()
+            ) {
+                DownloadSnapshot(
+                    sourceId = sourceId,
+                    title = preview.title.orEmpty(),
+                    author = preview.author.orEmpty(),
+                    workType = preview.mediaType.orEmpty(),
+                    resources = snapshotResources,
+                )
+            } else {
+                null
+            },
         )
     }
 
@@ -718,15 +822,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         }
     }
 
-    private fun previewRequestHeaders(): Map<String, String> {
-        val headers = linkedMapOf(
-            "User-Agent" to PREVIEW_USER_AGENT,
-            "Referer" to PREVIEW_REFERER,
-        )
-        val cookie = StoreModule.getCookieString().orEmpty()
-        if (cookie.isNotBlank()) headers["Cookie"] = cookie
-        return headers
-    }
+    private fun previewRequestHeaders(): Map<String, String> =
+        PreviewRequestPolicy.headersFor(currentDownloadType)
 
     private fun copyCurrentPreviewLink() {
         val source = currentPreview?.sourceUrl?.takeIf { it.isNotBlank() }
@@ -767,9 +864,228 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun showMineSheet() {
-        refreshLoginState()
+        refreshLoginUi()
         refreshHistoryUi()
+        refreshExceptionLogUi()
         mineSheetController.show()
+    }
+
+    private fun refreshExceptionLogUi() {
+        val logs = ExceptionLogStore.getAll()
+        binding.exceptionSection.visibility = if (logs.isEmpty()) View.GONE else View.VISIBLE
+        if (logs.isNotEmpty()) {
+            binding.tvExceptionSummary.text = getString(
+                R.string.main_exception_log_count_format,
+                logs.size,
+            )
+        }
+    }
+
+    private fun showExceptionLogsDialog() {
+        val logs = ExceptionLogStore.getAll()
+        if (logs.isEmpty()) {
+            toast(getString(R.string.main_exception_log_empty))
+            refreshExceptionLogUi()
+            return
+        }
+        var selectedIndex = 0
+        val detail = TextView(this).apply {
+            setTextColor(getColor(R.color.dy_primary_light))
+            textSize = 12f
+            setPadding(12, 12, 12, 12)
+            text = ExceptionLogStore.formatForCopy(logs.first())
+        }
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        logs.forEachIndexed { index, log ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(12, 10, 12, 10)
+                setBackgroundResource(R.drawable.bg_section_download)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { setMargins(0, 0, 0, 8) }
+            }
+            val item = TextView(this).apply {
+                text = "${log.displayTime} · ${log.operation} · ${log.channel}\n${log.stage}\n${log.parseException.take(120)}"
+                setTextColor(getColor(R.color.dy_primary_light))
+                textSize = 13f
+                setOnClickListener {
+                    selectedIndex = index
+                    detail.text = ExceptionLogStore.formatForCopy(log)
+                }
+            }
+            val copy = TextView(this).apply {
+                text = "复制此条日志"
+                setTextColor(getColor(R.color.dy_primary_light))
+                textSize = 13f
+                setPadding(0, 10, 0, 0)
+                setOnClickListener {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(
+                        android.content.ClipData.newPlainText(
+                            getString(R.string.main_exception_log_title),
+                            ExceptionLogStore.formatForCopy(log),
+                        )
+                    )
+                    toast(getString(R.string.main_exception_log_copied))
+                }
+            }
+            row.addView(item)
+            row.addView(copy)
+            list.addView(row)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(18))
+            addView(View(this@MainActivity).apply {
+                setBackgroundResource(R.drawable.bg_sheet_grabber)
+                layoutParams = LinearLayout.LayoutParams(dp(42), dp(4)).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    bottomMargin = dp(14)
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = getString(R.string.main_exception_log_dialog_title)
+                setTextColor(getColor(R.color.dy_primary))
+                textSize = 20f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "选择一条记录查看完整阶段信息，或直接复制该条日志"
+                setTextColor(getColor(R.color.dy_text_muted))
+                textSize = 12f
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(4); bottomMargin = dp(10) }
+            })
+            addView(ScrollView(this@MainActivity).apply {
+                addView(list)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (180 * resources.displayMetrics.density).toInt(),
+                )
+            })
+            addView(ScrollView(this@MainActivity).apply {
+                addView(detail)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (260 * resources.displayMetrics.density).toInt(),
+                )
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "复制内容已隐藏 Cookie、Token、签名参数和完整响应正文"
+                setTextColor(getColor(R.color.dy_text_muted))
+                textSize = 11f
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(8) }
+            })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(44),
+                ).apply { topMargin = dp(10) }
+                val close = DyActionButton(this@MainActivity).apply {
+                    text = getString(R.string.main_exception_log_close)
+                    setStyle(DyActionButton.Style.GHOST)
+                }
+                val copyCurrent = DyActionButton(this@MainActivity).apply {
+                    text = getString(R.string.main_exception_log_copy)
+                    setStyle(DyActionButton.Style.PRIMARY)
+                    setOnClickListener {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(
+                            android.content.ClipData.newPlainText(
+                                getString(R.string.main_exception_log_title),
+                                ExceptionLogStore.formatForCopy(logs[selectedIndex]),
+                            )
+                        )
+                        toast(getString(R.string.main_exception_log_copied))
+                    }
+                }
+                addView(close, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
+                    marginEnd = dp(8)
+                })
+                addView(copyCurrent, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            })
+        }
+        val dialog = BottomSheetDialog(this)
+        (content.getChildAt(content.childCount - 1) as? LinearLayout)?.let { actions ->
+            actions.getChildAt(0).setOnClickListener { dialog.dismiss() }
+        }
+        dialog.setContentView(content)
+        dialog.show()
+    }
+
+    private fun recordResolveException(
+        inputText: String,
+        stage: String,
+        error: String?,
+        responseSummary: String,
+        retryInfo: String,
+        channelOverride: String? = null,
+        stageOverride: String? = null,
+        statusOverride: String = "失败",
+        operation: String = "解析",
+        diagnostics: PyDiagnosticsResponse? = null,
+    ) {
+        val now = System.currentTimeMillis()
+        val source = PlatformResolver.resolve(inputText)?.url ?: inputText
+        ExceptionLogStore.add(
+            ExceptionLogRecord(
+                id = now.toString(),
+                createdAt = now,
+                platform = currentTitle,
+                operation = operation,
+                channel = channelOverride?.takeIf { it.isNotBlank() }?.let { channel ->
+                    when (channel) {
+                        "cookie_fallback" -> "Cookie 兜底"
+                        "anonymous" -> "匿名解析"
+                        else -> channel
+                    }
+                } ?: if (StoreModule.loggedIn()) "匿名解析 / Cookie 兜底可用" else "匿名解析",
+                stage = stageOverride?.takeIf { it.isNotBlank() } ?: stage,
+                sourceUrl = ExceptionLogRecord.redactUrl(source),
+                status = statusOverride,
+                responseSummary = responseSummary.take(500),
+                parseException = (error ?: getString(R.string.main_error_unknown)).take(500),
+                retryInfo = retryInfo,
+                attempts = diagnostics?.stages.orEmpty().joinToString("；") { stage ->
+                    buildString {
+                        append(stage.name)
+                        append(":")
+                        append(stage.status)
+                        if (stage.errorType.orEmpty().isNotBlank()) append("/${stage.errorType}")
+                        if (stage.error.orEmpty().isNotBlank()) append("(${stage.error})")
+                    }
+                },
+                timings = diagnostics?.stages.orEmpty().joinToString(", ") { stage ->
+                    "${stage.name}=${stage.durationMs}ms"
+                },
+            )
+        )
+    }
+
+    private fun buildResolveResponseSummary(preview: PyResolveResult): String {
+        val timings = preview.timings.entries.joinToString(", ") { "${it.key}=${it.value}ms" }
+        return "ok=${preview.ok}; message=${preview.message}; resources=${preview.resources.size}; timings=$timings"
+    }
+
+    private fun refreshLoginUi() {
+        val visible = currentDownloadType == DownloadType.DOU_YIN
+        binding.loginSection.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) {
+            val status = if (StoreModule.loggedIn()) {
+                getString(R.string.main_login_status_logged_in)
+            } else {
+                getString(R.string.main_login_status_logged_out)
+            }
+            binding.tvLoginStatus.text = getString(R.string.main_login_status, status)
+        }
     }
 
     private fun hideSheets() {
@@ -805,7 +1121,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnSaveSheet.setStyle(DyActionButton.Style.PRIMARY)
         binding.btnClipboardDismiss.setStyle(DyActionButton.Style.GHOST)
         binding.btnClipboardParse.setStyle(DyActionButton.Style.PRIMARY)
-        binding.btnLogin.setStyle(DyActionButton.Style.PRIMARY)
         binding.btnHistoryOpen.setStyle(DyActionButton.Style.PRIMARY)
         binding.btnHistoryShare.setStyle(DyActionButton.Style.SECONDARY)
         binding.btnHistoryRetry.setStyle(DyActionButton.Style.PRIMARY)
@@ -1041,6 +1356,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     override fun onAbilityChanged(downloadType: DownloadType) {
         refreshPlatformUi()
+        refreshLoginUi()
     }
 
     private fun clearLinkAndCancelDownload() {
@@ -1159,7 +1475,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             val inputText = result?.normalizedInput ?: sharedText
             setInputText(inputText)
             clearPreview()
-            if (result == null) toast(getString(R.string.main_toast_only_douyin_supported))
+            if (result == null) toast(getString(R.string.main_toast_supported_platforms_only))
         }
     }
 
@@ -1167,11 +1483,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         if (isDownloading) return
         lifecycleScope.launch {
             delay(CLIPBOARD_CHECK_DELAY_MS)
-            checkClipboardForDouyinLink()
+            checkClipboardForSupportedLink()
         }
     }
 
-    private fun checkClipboardForDouyinLink() {
+    private fun checkClipboardForSupportedLink() {
         if (isDownloading) return
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         if (!clipboard.hasPrimaryClip()) return
@@ -1190,57 +1506,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         showClipboardDialog(result.normalizedInput)
     }
 
-    private fun refreshLoginState() {
-        val needLogin = LoginModule.needLogin
-        binding.loginSection.visibility = if (needLogin) View.VISIBLE else View.GONE
-        if (!needLogin) return
-
-        val cookieString = StoreModule.getCookieString().orEmpty()
-        val loggedIn = StoreModule.loggedIn()
-        binding.tvLoginState.text = if (loggedIn) {
-            getString(R.string.main_status_logged_in)
-        } else {
-            getString(R.string.main_status_not_logged_in)
-        }
-        binding.btnLogin.text = if (loggedIn) {
-            getString(R.string.main_button_relogin)
-        } else {
-            getString(R.string.main_button_login)
-        }
-        binding.accountDesc.text = getString(
-            R.string.main_cookie_diagnostics_format,
-            formatCookieFieldState(cookieString, "sessionid"),
-            formatCookieFieldState(cookieString, "sso_uid_tt"),
-            formatCookieFieldState(cookieString, "ttwid"),
-            formatCookieFieldState(cookieString, "passport_csrf_token"),
-            formatCookieFieldState(cookieString, "msToken"),
-        )
-    }
-
-    private fun clearDouyinCookies() {
-        com.zemin.downloader.common.util.LocalStorage.clearCookies(DownloadType.DOU_YIN.type)
-        CookieManager.getInstance().removeAllCookies {
-            CookieManager.getInstance().flush()
-            lifecycleScope.launch {
-                DownloadModule.refreshCookies("")
-                refreshLoginState()
-                toast(getString(R.string.main_toast_cookie_cleared))
-            }
-        }
-    }
-
-    private fun formatCookieFieldState(cookieString: String, field: String): String {
-        return if (cookieString.contains("$field=")) {
-            getString(R.string.main_cookie_field_present)
-        } else {
-            getString(R.string.main_cookie_field_missing)
-        }
-    }
-
     private fun refreshPlatformUi() {
         binding.tvAppTitle.text =
             getString(R.string.main_platform_selector_title_format, currentTitle)
-        binding.tvInputTitle.text = getString(R.string.main_input_title_douyin)
+        binding.tvInputTitle.text = when (currentDownloadType) {
+            DownloadType.DOU_YIN -> getString(R.string.main_input_title_douyin)
+            DownloadType.XIAO_HONG_SHU -> getString(R.string.main_input_title_xhs)
+        }
         binding.etUrl.hint = getString(R.string.main_share_input_hint)
         binding.root.post {
             val topMargin = binding.progressBubble.y.roundToInt()
@@ -1249,12 +1521,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
             )
         }
-        refreshLoginState()
     }
 
     private fun setUiEnabled(enabled: Boolean) {
         binding.etUrl.isEnabled = enabled
-        binding.btnLogin.isEnabled = enabled
         binding.btnDownload.isEnabled = enabled
         binding.btnClear.isEnabled = true
     }
@@ -1279,7 +1549,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun showUnsupportedLink() {
         clearPreview()
-        showError(getString(R.string.main_toast_only_douyin_supported))
+        showError(getString(R.string.main_toast_supported_platforms_only))
     }
 
     private fun createDownloadProgressListener(): DownloadProgressListener =
@@ -1331,9 +1601,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         const val APP_HEADER_HEIGHT_DP = 48
         const val BOTTOM_NAV_HEIGHT_DP = 58
         const val CONTENT_BOTTOM_NAV_SPACE_DP = 64
-        const val PREVIEW_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
-        const val PREVIEW_REFERER = "https://www.douyin.com/"
     }
 
 }
