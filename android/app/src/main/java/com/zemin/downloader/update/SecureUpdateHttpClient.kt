@@ -8,13 +8,22 @@ import java.net.URL
 object SecureUpdateHttpClient {
     fun openManifest(): HttpURLConnection = openFollowingRedirects(
         initialUrl = AppUpdateConfig.MANIFEST_URL,
+        acceptCodes = setOf(HttpURLConnection.HTTP_OK),
+        rangeStart = 0L,
         isAllowedUrl = AppUpdateConfig::isAllowedManifestUrl,
     )
 
-    fun openApk(apkUrl: String): HttpURLConnection = openFollowingRedirects(
-        initialUrl = apkUrl,
-        isAllowedUrl = AppUpdateConfig::isAllowedApkRedirectUrl,
-    )
+    fun openApk(apkUrl: String, rangeStart: Long = 0L): HttpURLConnection =
+        openFollowingRedirects(
+            initialUrl = apkUrl,
+            acceptCodes = setOf(
+                HttpURLConnection.HTTP_OK,
+                HttpURLConnection.HTTP_PARTIAL,
+                HTTP_RANGE_NOT_SATISFIABLE,
+            ),
+            rangeStart = rangeStart,
+            isAllowedUrl = AppUpdateConfig::isAllowedApkRedirectUrl,
+        )
 
     fun readManifest(connection: HttpURLConnection): String {
         val output = ByteArrayOutputStream()
@@ -36,6 +45,8 @@ object SecureUpdateHttpClient {
 
     private fun openFollowingRedirects(
         initialUrl: String,
+        acceptCodes: Set<Int>,
+        rangeStart: Long,
         isAllowedUrl: (String) -> Boolean,
     ): HttpURLConnection {
         var current = URL(initialUrl)
@@ -49,9 +60,10 @@ object SecureUpdateHttpClient {
                 useCaches = false
                 setRequestProperty("Accept", "application/json, application/vnd.android.package-archive")
                 setRequestProperty("User-Agent", AppUpdateConfig.USER_AGENT)
+                if (rangeStart > 0L) setRequestProperty("Range", "bytes=$rangeStart-")
             }
             val responseCode = connection.responseCode
-            if (responseCode == HttpURLConnection.HTTP_OK) return connection
+            if (responseCode in acceptCodes) return connection
             if (responseCode !in REDIRECT_CODES || redirectCount == AppUpdateConfig.MAX_REDIRECTS) {
                 connection.errorStream?.close()
                 connection.disconnect()
@@ -71,4 +83,5 @@ object SecureUpdateHttpClient {
     }
 
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
+    private const val HTTP_RANGE_NOT_SATISFIABLE = 416
 }

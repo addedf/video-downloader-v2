@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 13,
-  "versionName": "2.4.1",
+  "versionCode": 14,
+  "versionName": "2.4.2",
   "minSupportedVersionCode": 5,
-  "apkUrl": "https://updates.menkange.com/android/VideoDownloaderV2-v2.4.1-arm64-v8a.apk",
-  "sha256": "b58ee63c98571dabe2e753d9ba78c8b5ffb1af037880894530cea30aba7848f5",
-  "changelog": "第二版匿名架构正式发布：抖音/小红书免登录公开解析、快照式下载、异常日志；应用为「视频下载器 V2」独立安装包，旧「抖音下载器」用户请卸载旧版后安装本应用。",
-  "publishedAt": "2026-09-28T15:37:04Z"
+  "apkUrl": "https://updates.menkange.com/android/VideoDownloaderV2-v2.4.2-arm64-v8a.apk",
+  "sha256": "f6c510b5755e6e5874e843e8fc7232befc8c2e4deb6e1f1c1da5b094b1251f3e",
+  "changelog": "应用内更新下载加固：断点续传、失败自动重试（最多 5 次尝试）、读超时放宽到 30 秒；显著提升弱网环境下的热更新成功率。",
+  "publishedAt": "2026-09-28T16:48:59Z"
 }

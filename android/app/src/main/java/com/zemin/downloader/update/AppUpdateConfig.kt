@@ -5,11 +5,17 @@ import java.net.URI
 object AppUpdateConfig {
     const val MANIFEST_URL = "https://updates.menkange.com/android/update.json"
     const val CONNECT_TIMEOUT_MS = 8_000
-    const val READ_TIMEOUT_MS = 15_000
+    const val READ_TIMEOUT_MS = 30_000
     const val MAX_REDIRECTS = 5
     const val MAX_MANIFEST_BYTES = 128 * 1024
     const val MAX_APK_BYTES = 250L * 1024L * 1024L
+    const val MAX_DOWNLOAD_ATTEMPTS = 5
     const val USER_AGENT = "DouYinDownloader-Android-Update/1"
+
+    private val RETRY_DELAYS_MS = longArrayOf(1_000L, 2_000L, 4_000L, 8_000L)
+
+    fun retryDelayMillis(retryIndex: Int): Long =
+        RETRY_DELAYS_MS.getOrElse(retryIndex - 1) { RETRY_DELAYS_MS.last() }
 
     private const val UPDATE_HOST = "updates.menkange.com"
     private const val GITHUB_HOST = "github.com"
