@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ricardo.douyindown"
+        applicationId = "com.ricardo.videodownloader.v2"
         minSdk = 28
         targetSdk = 36
         versionCode = 12
