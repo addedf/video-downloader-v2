@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 14,
-  "versionName": "2.4.2",
+  "versionCode": 15,
+  "versionName": "2.4.3",
   "minSupportedVersionCode": 5,
-  "apkUrl": "https://updates.menkange.com/android/VideoDownloaderV2-v2.4.2-arm64-v8a.apk",
-  "sha256": "f6c510b5755e6e5874e843e8fc7232befc8c2e4deb6e1f1c1da5b094b1251f3e",
-  "changelog": "应用内更新下载加固：断点续传、失败自动重试（最多 5 次尝试）、读超时放宽到 30 秒；显著提升弱网环境下的热更新成功率。",
-  "publishedAt": "2026-09-28T16:48:59Z"
+  "apkUrl": "https://updates.menkange.com/android/VideoDownloaderV2-v2.4.3-arm64-v8a.apk",
+  "sha256": "b24e4b7d837b95a6b32fb78ef274963323096a0fe742a030d9f93a0b4173bcb1",
+  "changelog": "热更新链路验证版：功能与 v2.4.2 一致，用于验证应用内更新全流程（下载、断点续传、安全校验、自动续装）。",
+  "publishedAt": "2026-09-28T17:56:42Z"
 }
