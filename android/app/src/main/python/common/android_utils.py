@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
-URL_PATTERN = re.compile(r"https?://[^\s\"'<>]+")
+URL_PATTERN = re.compile(r"https?://[^\s\"'<>\]]+")
 URL_TRAILING_PUNCTUATION = ".,;，。；)"
 TMP_SUFFIX = ".tmp"
 

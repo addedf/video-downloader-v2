@@ -7,7 +7,7 @@ import com.zemin.downloader.appContext
  * @author maozemin@coocaa.com
  * @desc
  */
-val URL_PATTERN = Regex("https?://\\S+")
+val URL_PATTERN = Regex("https?://[^\\s\\\"'<>\\]]+")
 
 fun extractSharedText(intent: Intent?): String {
     if (intent == null) return ""

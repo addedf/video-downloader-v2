@@ -9,6 +9,6 @@ object BridgeAbilityConfig {
     fun getDefaultDownloadType() = DownloadType.DOU_YIN
 
     fun getAllAbility(): List<DownloadType> {
-        return listOf(DownloadType.DOU_YIN)
+        return listOf(DownloadType.DOU_YIN, DownloadType.XIAO_HONG_SHU)
     }
 }

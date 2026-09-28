@@ -15,6 +15,7 @@ from yaml import safe_load
 from common.android_flow_logger import AndroidFlowLogger, url_preview
 from common.android_utils import elapsed_ms, host, speed_kbps
 from .xhs_source_bootstrap import install_module_exports
+from .xhs_url_utils import SHORT_XHS_URL_PATTERN, normalize_xhs_media_url
 
 install_module_exports()
 
@@ -165,7 +166,7 @@ class AndroidXHS:
     LINK = compile(r"(?:https?://)?www\.xiaohongshu\.com/explore/\S+")
     USER = compile(r"(?:https?://)?www\.xiaohongshu\.com/user/profile/[a-z0-9]+/\S+")
     SHARE = compile(r"(?:https?://)?www\.xiaohongshu\.com/discovery/item/\S+")
-    SHORT = compile(r"(?:https?://)?xhslink\.com/[^\s\"<>\\^`{|}，。；！？、【】《》]+")
+    SHORT = SHORT_XHS_URL_PATTERN
     ID = compile(r"(?:explore|item)/(\S+)?\?")
     ID_USER = compile(r"user/profile/[a-z0-9]+/(\S+)?\?")
     CLEANER = Cleaner()
@@ -252,15 +253,18 @@ class AndroidXHS:
         self.event = Event()
 
     def __extract_image(self, container: dict, data: Namespace):
-        container["下载地址"], container["动图地址"] = self.image.get_image_link(
-            data, self.manager.image_format
-        )
+        image_urls, live_urls = self.image.get_image_link(data, self.manager.image_format)
+        container["下载地址"] = [
+            url for value in image_urls if (url := normalize_xhs_media_url(value))
+        ]
+        container["动图地址"] = [normalize_xhs_media_url(value) or None for value in live_urls]
 
     def __extract_video(self, container: dict, data: Namespace):
-        container["下载地址"] = self.video.deal_video_link(
-            data,
-            self.manager.video_preference,
-        )
+        container["下载地址"] = [
+            url
+            for value in self.video.deal_video_link(data, self.manager.video_preference)
+            if (url := normalize_xhs_media_url(value))
+        ]
         container["动图地址"] = [None]
 
     async def __download_files(
@@ -601,7 +605,7 @@ class AndroidXHS:
     def _format_video_url(url: str) -> str:
         if not isinstance(url, str) or not url:
             return ""
-        return Html.format_url(url)
+        return normalize_xhs_media_url(Html.format_url(url))
 
     @staticmethod
     def _deduplicate_video_urls(urls) -> list[str]:
