@@ -638,6 +638,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 platform = when (currentDownloadType) {
                     DownloadType.DOU_YIN -> "douyin"
                     DownloadType.XIAO_HONG_SHU -> "xiaohongshu"
+                    DownloadType.TWITTER -> "x"
                 },
                 url = sourceUrl,
                 id = sourceId,
@@ -1512,6 +1513,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.tvInputTitle.text = when (currentDownloadType) {
             DownloadType.DOU_YIN -> getString(R.string.main_input_title_douyin)
             DownloadType.XIAO_HONG_SHU -> getString(R.string.main_input_title_xhs)
+            DownloadType.TWITTER -> getString(R.string.main_input_title_format, getString(R.string.name_x))
         }
         binding.etUrl.hint = getString(R.string.main_share_input_hint)
         binding.root.post {

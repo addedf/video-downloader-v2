@@ -62,6 +62,7 @@ object BridgeAbilityManager {
         val ability = when (downloadType) {
             DownloadType.DOU_YIN -> DyBridgeAbility()
             DownloadType.XIAO_HONG_SHU -> XhsBridgeAbility()
+            DownloadType.TWITTER -> com.zemin.downloader.impl.x.XBridgeAbility()
         }
         abilityCache[downloadType] = ability
         return ability

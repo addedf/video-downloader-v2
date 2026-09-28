@@ -20,6 +20,21 @@ object PlatformResolver {
         "xhs.cn", "www.xhs.cn",
     )
 
+    private val supportedXHosts = setOf(
+        "x.com",
+        "www.x.com",
+        "mobile.x.com",
+        "twitter.com",
+        "www.twitter.com",
+        "mobile.twitter.com",
+        "vxtwitter.com",
+        "www.vxtwitter.com",
+        "fixupx.com",
+        "www.fixupx.com",
+        "t.co",
+        "www.t.co",
+    )
+
     fun resolve(inputText: String): PlatformResolveResult? {
         val normalized = normalizeSharedText(inputText)
         if (normalized.isBlank()) return null
@@ -31,6 +46,7 @@ object PlatformResolver {
         val type = when {
             isDouyinHost(host) -> DownloadType.DOU_YIN
             isXhsHost(host) -> DownloadType.XIAO_HONG_SHU
+            isXHost(host) -> DownloadType.TWITTER
             else -> return null
         }
         return PlatformResolveResult(type, url, url)
@@ -44,6 +60,9 @@ object PlatformResolver {
     private fun isXhsHost(host: String) =
         host in supportedXhsHosts || host.endsWith(".xiaohongshu.com") || host.endsWith(".xhslink.com") ||
             host.endsWith(".xhslink.cn")
+
+    private fun isXHost(host: String) =
+        host in supportedXHosts || host.endsWith(".x.com") || host.endsWith(".twitter.com")
 }
 
 fun String.trimSupportedUrlEnd(): String = trimEnd('.', ',', ';', '，', '。', '；', ')', '）', ']')

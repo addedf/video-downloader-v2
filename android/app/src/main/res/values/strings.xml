@@ -3,6 +3,7 @@
     <string name="share_target_name">保存到视频下载器 V2</string>
     <string name="name_dou_yin">抖音</string>
     <string name="name_xhs">小红书</string>
+    <string name="name_x">X (Twitter)</string>
     <string name="main_platform_title_format">%1$s下载器</string>
     <string name="main_platform_selector_title_format">%1$s下载器</string>
     <string name="main_input_title_format">%1$s分享文本或链接</string>

@@ -64,6 +64,36 @@
                 <data
                     android:host="www.xhslink.cn"
                     android:scheme="https" />
+                <data
+                    android:host="x.com"
+                    android:scheme="https" />
+                <data
+                    android:host="www.x.com"
+                    android:scheme="https" />
+                <data
+                    android:host="mobile.x.com"
+                    android:scheme="https" />
+                <data
+                    android:host="twitter.com"
+                    android:scheme="https" />
+                <data
+                    android:host="www.twitter.com"
+                    android:scheme="https" />
+                <data
+                    android:host="mobile.twitter.com"
+                    android:scheme="https" />
+                <data
+                    android:host="t.co"
+                    android:scheme="https" />
+                <data
+                    android:host="www.t.co"
+                    android:scheme="https" />
+                <data
+                    android:host="vxtwitter.com"
+                    android:scheme="https" />
+                <data
+                    android:host="fixupx.com"
+                    android:scheme="https" />
             </intent-filter>
         </activity>
 
