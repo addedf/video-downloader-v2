@@ -2,6 +2,7 @@ package com.zemin.downloader.common
 
 import com.zemin.downloader.common.bean.ApiMetric
 import com.zemin.downloader.common.bean.DownloadMetric
+import com.zemin.downloader.common.bean.PyDiagnosticsResponse
 
 interface IDownloadResult
 
@@ -16,7 +17,8 @@ open class PyDownloadResult(
     val skipped: Int,
     val timings: Map<String, Int>,
     val downloadMetrics: List<DownloadMetric>,
-    val apiMetrics: List<ApiMetric>
+    val apiMetrics: List<ApiMetric>,
+    val diagnostics: PyDiagnosticsResponse? = null
 ) : IDownloadResult
 
 open class PyResolveResult(
@@ -33,6 +35,8 @@ open class PyResolveResult(
     val schemaVersion: Int = 1,
     val capabilities: ResolveCapabilities = ResolveCapabilities(),
     val counts: ResolveCounts = ResolveCounts(),
+    val timings: Map<String, Int> = emptyMap(),
+    val diagnostics: PyDiagnosticsResponse? = null,
 ) : IDownloadResult
 
 data class ResolvedResource(

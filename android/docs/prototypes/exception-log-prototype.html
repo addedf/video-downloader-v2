@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>异常日志复制｜交互原型</title>
+  <style>
+    :root {
+      --ink: #15161b;
+      --ink-soft: #2b2d35;
+      --muted: #717783;
+      --line: #dfe3e8;
+      --surface: #f5f7f9;
+      --cyan: #00e5f0;
+      --green: #16885b;
+      --red: #d94747;
+      --mask: rgba(10, 11, 14, .48);
+      --radius: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #d9dde4; color: var(--ink-soft); }
+    button { font: inherit; cursor: pointer; }
+    .stage { min-height: 100vh; display: flex; gap: 24px; justify-content: center; align-items: flex-start; padding: 28px; }
+    .phone { width: min(430px, 100vw); height: min(860px, calc(100vh - 56px)); min-height: 680px; overflow: hidden; position: relative; background: #fff; border-radius: 18px; box-shadow: 0 18px 55px rgba(20,25,35,.2); }
+    .appbar { height: 82px; padding: 34px 16px 0; display: flex; align-items: center; font-size: 20px; font-weight: 800; color: var(--ink); box-shadow: 0 1px 4px rgba(18,18,23,.12); }
+    .content { height: calc(100% - 82px); padding: 8px 8px 72px; overflow: auto; background: #fff; }
+    .card { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 12px; margin-bottom: 8px; }
+    .eyebrow { color: var(--muted); font-size: 11px; }
+    h1, h2, h3, p { margin: 0; }
+    .title { margin-top: 3px; font-size: 16px; font-weight: 800; color: var(--ink); }
+    .meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 16px; }
+    .input { margin-top: 8px; min-height: 50px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink-soft); font-size: 12px; line-height: 17px; word-break: break-all; }
+    .row { display: flex; gap: 8px; margin-top: 10px; }
+    .btn { min-height: 40px; flex: 1; border: 0; border-radius: 8px; padding: 0 12px; font-size: 13px; font-weight: 800; }
+    .btn.primary { background: var(--ink); color: white; }
+    .btn.secondary { background: var(--cyan); color: #001014; }
+    .btn.ghost { background: var(--surface); border: 1px solid var(--line); color: var(--ink-soft); }
+    .error-card { border-color: #f0c7c7; background: #fff9f9; }
+    .error-head { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+    .error-title { color: #a72f2f; font-weight: 800; font-size: 14px; }
+    .error-message { margin-top: 7px; color: var(--ink-soft); font-size: 12px; line-height: 18px; }
+    .error-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .error-actions .btn { min-height: 36px; }
+    .success-card { border-color: #b9e4d0; background: #f5fffa; }
+    .success-card .title { color: var(--green); font-size: 14px; }
+    .bottom-nav { position: absolute; left: 0; right: 0; bottom: 0; height: 62px; display: grid; grid-template-columns: 1fr 1fr; background: rgba(255,255,255,.96); border-top: 1px solid var(--line); }
+    .nav-item { border: 0; background: transparent; color: var(--muted); font-size: 12px; }
+    .nav-item.active { color: var(--ink); font-weight: 800; }
+    .sheet-mask { position: absolute; inset: 0; display: none; align-items: flex-end; background: var(--mask); z-index: 5; }
+    .sheet-mask.show { display: flex; }
+    .sheet { width: 100%; max-height: 90%; overflow: auto; padding: 10px 16px 18px; border-radius: 16px 16px 0 0; background: white; animation: up .22s ease-out; }
+    @keyframes up { from { transform: translateY(24px); opacity: .5; } to { transform: translateY(0); opacity: 1; } }
+    .grabber { width: 42px; height: 4px; margin: 0 auto 14px; border-radius: 4px; background: #cdd2d8; }
+    .sheet h2 { font-size: 20px; color: var(--ink); }
+    .sheet-subtitle { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 17px; }
+    .status-strip { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0 8px; padding: 10px; border-radius: 8px; background: var(--surface); font-size: 12px; }
+    .status-strip strong { color: var(--red); }
+    .log-item { width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: white; text-align: left; }
+    .log-item.active { border-color: var(--cyan-dark, #00a8b5); box-shadow: 0 0 0 2px rgba(0,229,240,.13); }
+    .log-item-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 800; }
+    .log-item-time { color: var(--muted); font-size: 10px; font-weight: 500; }
+    .log-item-message { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 16px; }
+    .log-detail { margin-top: 10px; }
+    .detail-block { margin-top: 8px; padding: 10px; border-radius: 8px; background: var(--surface); }
+    .detail-label { color: var(--muted); font-size: 10px; }
+    .detail-value { margin-top: 3px; color: var(--ink-soft); font-size: 11px; line-height: 17px; word-break: break-word; white-space: pre-wrap; }
+    .detail-value.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+    .safe-note { margin-top: 10px; padding: 9px 10px; border: 1px solid #c6e8dc; border-radius: 8px; color: #176e53; background: #f4fffa; font-size: 11px; line-height: 16px; }
+    .toast { position: absolute; left: 50%; bottom: 76px; transform: translate(-50%, 10px); padding: 10px 14px; border-radius: 999px; background: rgba(21,22,27,.92); color: white; font-size: 12px; opacity: 0; pointer-events: none; transition: .2s; z-index: 20; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .notes { width: min(420px, 100%); padding: 4px 0; }
+    .notes h1 { font-size: 22px; color: var(--ink); }
+    .notes > p { margin-top: 8px; color: #4b515a; font-size: 13px; line-height: 20px; }
+    .note-card { margin-top: 12px; padding: 14px; border-radius: 12px; background: rgba(255,255,255,.8); border: 1px solid rgba(255,255,255,.8); }
+    .note-card h3 { font-size: 14px; color: var(--ink); }
+    .note-card p, .note-card li { margin-top: 7px; color: #5c636d; font-size: 12px; line-height: 18px; }
+    .note-card ol { margin: 0; padding-left: 18px; }
+    code { padding: 1px 4px; border-radius: 4px; background: #eef1f4; color: #363b45; font-size: 11px; }
+    @media (max-width: 760px) { .stage { padding: 0; display: block; } .phone { width: 100vw; height: 100vh; min-height: 0; border-radius: 0; } .notes { display: none; } }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="phone" aria-label="异常日志复制交互原型">
+      <header class="appbar">视频下载器 V2</header>
+      <div class="content">
+        <section class="card">
+          <div class="eyebrow">资源解析</div>
+          <div class="title">抖音分享文本或链接</div>
+          <div class="input">https://v.douyin.com/YlOj5T3IrHQ/</div>
+          <div class="row">
+            <button class="btn ghost" type="button" onclick="simulateSuccess()">模拟成功</button>
+            <button class="btn primary" type="button" onclick="simulateFailure()">模拟解析</button>
+          </div>
+        </section>
+
+        <section class="card success-card" id="successCard" hidden>
+          <div class="title">解析成功</div>
+          <div class="meta">已通过匿名解析获得 1 个视频资源，可以继续预览或保存。</div>
+        </section>
+      </div>
+      <nav class="bottom-nav">
+        <button class="nav-item active" type="button">解析</button>
+        <button class="nav-item" type="button" onclick="openMine()">我的</button>
+      </nav>
+      <div class="toast" id="toast">已复制脱敏日志</div>
+
+      <div class="sheet-mask" id="mineMask" onclick="closeMask(event, 'mineMask')">
+        <section class="sheet" onclick="event.stopPropagation()">
+          <div class="grabber"></div>
+          <h2>我的</h2>
+          <p class="sheet-subtitle">查看最近下载与解析诊断信息</p>
+          <div class="card" style="margin-top:14px;margin-bottom:8px">
+            <div class="eyebrow">抖音登录</div>
+            <div class="title">登录后增强解析</div>
+            <div class="meta" id="loginHint">未登录也可以使用匿名解析；遇到日常作品或权限限制时，可登录 WebView 作为 Cookie 兜底。</div>
+            <div class="row">
+              <button class="btn secondary" type="button" onclick="loginWebView()">登录 WebView</button>
+              <button class="btn ghost" type="button" onclick="showLoginStatus()">查看状态</button>
+            </div>
+          </div>
+          <div class="status-strip"><span>最近解析</span><strong id="mineStatus">失败 · 需要诊断</strong></div>
+          <div class="row">
+            <button class="btn secondary" type="button" onclick="openLogs()">异常日志</button>
+            <button class="btn ghost" type="button" onclick="clearLogs()">清除日志</button>
+          </div>
+          <button class="btn ghost" style="width:100%;margin-top:10px" type="button" onclick="hideSheet('mineMask')">关闭</button>
+        </section>
+      </div>
+
+      <div class="sheet-mask" id="logMask" onclick="closeMask(event, 'logMask')">
+        <section class="sheet" onclick="event.stopPropagation()">
+          <div class="grabber"></div>
+          <h2>异常日志</h2>
+          <p class="sheet-subtitle">用于反馈解析问题，内容已自动脱敏。</p>
+          <div class="status-strip"><span>日志条数</span><strong id="logCount">2 条</strong></div>
+          <div id="logList"></div>
+          <div class="log-detail" id="logDetail"></div>
+          <div class="safe-note">复制内容会隐藏 Cookie、Token、X-Bogus、a_bogus、share_sign 和完整响应正文，只保留排查所需摘要。</div>
+          <div class="row">
+            <button class="btn secondary" type="button" onclick="copyLatestLog()">复制当前日志</button>
+            <button class="btn ghost" type="button" onclick="hideSheet('logMask')">关闭</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <aside class="notes">
+      <h1>异常日志复制｜交互说明</h1>
+      <p>这是独立确认原型，不会修改正式 Android 页面。异常日志入口只放在“我的”中，点击手机里的按钮查看状态变化。</p>
+      <div class="note-card">
+        <h3>推荐操作路径</h3>
+        <ol>
+          <li>解析失败时，解析页只显示失败提示和“重新解析”，不暴露诊断入口。</li>
+          <li>进入“我的”，可选择登录 WebView，也可以保持未登录继续使用匿名解析。</li>
+          <li>在“我的 → 异常日志”中查看事件列表，再点某一条看详情。</li>
+          <li>点击“复制当前日志”，复制脱敏文本并显示轻量 Toast。</li>
+        </ol>
+      </div>
+      <div class="note-card">
+        <h3>日志字段</h3>
+        <p><code>作品链接</code> 原始链接会截断查询参数；<code>渠道</code> 标记匿名解析、Cookie 兜底或重试；<code>报错信息</code> 保留用户可读错误；<code>返回摘要</code> 记录 HTTP 状态、页面状态标记、资源数量；<code>解析异常</code> 记录异常类型和阶段。</p>
+      </div>
+      <div class="note-card">
+        <h3>脱敏边界</h3>
+        <p>日志中不出现 Cookie、Token、完整签名参数、完整响应正文或媒体直链。复制内容只用于定位“哪条链接、哪个阶段、哪个渠道、哪种返回状态”出了问题。</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const logs = [
+      {
+        id: 1,
+        time: '2026-09-14 00:06:18',
+        channel: '匿名解析',
+        stage: 'resolve_public_share',
+        title: '日常作品未返回媒体数据',
+        message: '公开分享页返回 story_25_filter，item_list=0。',
+        detail: {
+          link: 'https://v.douyin.com/YlOj5T3IrHQ/',
+          route: 'v.douyin.com → www.iesdouyin.com/share/video/{id}',
+          status: 'HTTP 200；页面 JSON 可读',
+          response: '状态标记：story_25_filter；作品数量：0；媒体地址：0',
+          error: 'AnonymousDouyinError：日常作品已过期、删除或当前不可见',
+          retry: '匿名解析重试 2 次；未进入 Cookie 兜底（当前未登录）'
+        }
+      },
+      {
+        id: 2,
+        time: '2026-09-14 00:05:42',
+        channel: '匿名解析',
+        stage: 'resolve_public_share',
+        title: '分享页临时风控',
+        message: '返回 JS WAF challenge，解析器短退避后重试。',
+        detail: {
+          link: 'https://v.douyin.com/Q11ARU_8plY/',
+          route: 'v.douyin.com → iesdouyin.com',
+          status: 'HTTP 200；响应为 challenge 页面',
+          response: '页面标记：lf-waf-js / out-sha256.js；作品数量：未知',
+          error: 'AnonymousDouyinError：抖音公开分享页触发临时风控',
+          retry: '匿名解析重试 2 次；建议稍后重试或使用 Cookie 兜底'
+        }
+      }
+    ];
+    let selected = 0;
+
+    function renderLogs() {
+      document.getElementById('logCount').textContent = `${logs.length} 条`;
+      document.getElementById('logList').innerHTML = logs.map((log, index) => `
+        <button class="log-item ${index === selected ? 'active' : ''}" type="button" onclick="selectLog(${index})">
+          <div class="log-item-top"><span>${log.title}</span><span class="log-item-time">${log.time.slice(11)}</span></div>
+          <div class="log-item-message">${log.channel} · ${log.message}</div>
+        </button>`).join('');
+      renderDetail();
+    }
+
+    function renderDetail() {
+      const log = logs[selected] || logs[0];
+      if (!log) {
+        document.getElementById('logDetail').innerHTML = '<div class="meta">暂无异常日志</div>';
+        return;
+      }
+      const d = log.detail;
+      const fields = [
+        ['发生时间', log.time], ['解析渠道', log.channel], ['解析阶段', log.stage],
+        ['作品链接', d.link], ['请求路径', d.route], ['请求结果', d.status],
+        ['返回摘要', d.response], ['解析异常', d.error], ['重试信息', d.retry]
+      ];
+      document.getElementById('logDetail').innerHTML = fields.map(([label, value]) => `
+        <div class="detail-block"><div class="detail-label">${label}</div><div class="detail-value ${label === '解析阶段' ? 'mono' : ''}">${value}</div></div>`).join('');
+    }
+
+    function openLogs() { hideSheet('mineMask'); document.getElementById('logMask').classList.add('show'); renderLogs(); }
+    function openMine() { document.getElementById('mineMask').classList.add('show'); }
+    function hideSheet(id) { document.getElementById(id).classList.remove('show'); }
+    function closeMask(event, id) { if (event.target.id === id) hideSheet(id); }
+    function selectLog(index) { selected = index; renderLogs(); }
+    function clearLogs() { logs.splice(0, logs.length); selected = 0; renderLogs(); toast('已清除异常日志'); }
+    function loginWebView() {
+      document.getElementById('loginHint').textContent = '登录入口已准备：将在 WebView 中完成抖音登录，Cookie 仅用于当前设备的兜底解析。';
+      toast('即将打开抖音登录 WebView');
+    }
+    function showLoginStatus() {
+      toast('当前未登录，匿名解析仍可正常使用');
+    }
+    function simulateFailure() {
+      document.getElementById('successCard').hidden = true;
+      document.getElementById('mineStatus').textContent = '失败 · 需要诊断';
+      toast('解析失败，可到“我的”查看日志');
+    }
+    function simulateSuccess() {
+      document.getElementById('successCard').hidden = false;
+      document.getElementById('mineStatus').textContent = '成功 · 匿名解析';
+      toast('解析成功');
+    }
+    function logText() {
+      const log = logs[selected] || logs[0];
+      if (!log) return '暂无异常日志';
+      const d = log.detail;
+      return [
+        '[视频下载器 V2 异常日志]', `时间：${log.time}`, `渠道：${log.channel}`,
+        `阶段：${log.stage}`, `作品链接：${d.link}`, `请求路径：${d.route}`,
+        `请求结果：${d.status}`, `返回摘要：${d.response}`, `解析异常：${d.error}`,
+        `重试信息：${d.retry}`
+      ].join('\n');
+    }
+    async function copyLatestLog() {
+      try { await navigator.clipboard.writeText(logText()); } catch (_) {
+        const area = document.createElement('textarea'); area.value = logText(); document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+      }
+      toast('已复制脱敏日志');
+    }
+    function toast(message) {
+      const el = document.getElementById('toast'); el.textContent = message; el.classList.add('show');
+      clearTimeout(window.__toastTimer); window.__toastTimer = setTimeout(() => el.classList.remove('show'), 1500);
+    }
+    renderLogs();
+  </script>
+</body>
+</html>

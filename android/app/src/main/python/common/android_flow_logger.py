@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 import time
 from contextlib import contextmanager
@@ -80,6 +81,15 @@ class AndroidFlowLogger:
     @staticmethod
     def _safe_value(value: Any) -> str:
         text = str(value).replace("\n", "\\n").replace("\r", "\\r")
+        # Flow logs are forwarded by the Android bridge during debugging.
+        # Remove query strings and known credential fields before truncation;
+        # share links frequently contain share_sign/msToken values.
+        text = re.sub(
+            r"(?i)(cookie|authorization|token|msToken|x-bogus|a_bogus|share_sign|sessionid|sid_guard)\s*[:=]\s*[^\s,;|]+",
+            r"\1=[REDACTED]",
+            text,
+        )
+        text = re.sub(r"(https?://[^\s|?]+)\?[^\s|]+", r"\1", text)
         if len(text) > MAX_LOG_VALUE_LENGTH:
             return text[: MAX_LOG_VALUE_LENGTH - len(TRUNCATION_SUFFIX)] + TRUNCATION_SUFFIX
         return text

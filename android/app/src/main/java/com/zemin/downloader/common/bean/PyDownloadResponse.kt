@@ -16,6 +16,7 @@ data class PyDownloadResponse(
     val timings: Map<String, Int> = emptyMap(),
     @Json(name = "download_metrics") val downloadMetrics: List<DownloadMetric> = emptyList(),
     @Json(name = "api_metrics") val apiMetrics: List<ApiMetric> = emptyList(),
+    val diagnostics: PyDiagnosticsResponse? = null,
 )
 
 @JsonClass(generateAdapter = false)
@@ -33,4 +34,3 @@ data class DownloadMetric(
     @Json(name = "first_chunk_ms") val firstChunkMs: Int = 0,
     @Json(name = "speed_kbps") val speedKbps: Int = 0
 )
-

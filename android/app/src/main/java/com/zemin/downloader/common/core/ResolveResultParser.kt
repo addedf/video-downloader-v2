@@ -44,6 +44,8 @@ object ResolveResultParser {
             author = response.author,
             coverUrl = response.coverUrl,
             mediaType = response.mediaType,
+            timings = response.timings,
+            diagnostics = response.diagnostics,
             resources = response.resources.map {
                 ResolvedResource(
                     title = it.title,
@@ -128,6 +130,8 @@ object ResolveResultParser {
                 liveVideos = groups?.images?.count { it.liveVideo?.available == true }
                     ?: counts?.liveVideos ?: 0,
             ),
+            timings = response.timings,
+            diagnostics = response.diagnostics,
         )
     }
 }

@@ -16,8 +16,30 @@ data class PyResolveResponse(
     @Json(name = "cover_url") val coverUrl: String? = null,
     @Json(name = "media_type") val mediaType: String? = null,
     val resources: List<PyResolveResourceResponse> = emptyList(),
+    val timings: Map<String, Int> = emptyMap(),
+    val diagnostics: PyDiagnosticsResponse? = null,
     val source: PyResolveSourceResponse? = null,
     val work: PyResolveWorkResponse? = null,
+)
+
+@JsonClass(generateAdapter = false)
+data class PyDiagnosticsResponse(
+    val channel: String = "anonymous",
+    @Json(name = "input_url") val inputUrl: String = "",
+    val stages: List<PyDiagnosticStageResponse> = emptyList(),
+    @Json(name = "response_summary") val responseSummary: String = "",
+    val error: String = "",
+    @Json(name = "retry_count") val retryCount: Int = 0,
+    @Json(name = "fallback_used") val fallbackUsed: Boolean = false,
+)
+
+@JsonClass(generateAdapter = false)
+data class PyDiagnosticStageResponse(
+    val name: String = "",
+    val status: String = "",
+    @Json(name = "duration_ms") val durationMs: Int = 0,
+    val error: String? = null,
+    @Json(name = "error_type") val errorType: String? = null,
 )
 
 @JsonClass(generateAdapter = false)

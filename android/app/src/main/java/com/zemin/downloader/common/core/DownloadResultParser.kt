@@ -29,6 +29,7 @@ object DownloadResultParser {
             timings = response.timings,
             downloadMetrics = response.downloadMetrics,
             apiMetrics = response.apiMetrics,
+            diagnostics = response.diagnostics,
         )
     }
 }
