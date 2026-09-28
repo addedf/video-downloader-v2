@@ -14,7 +14,7 @@
 App 只接受以下来源：
 
 - 更新清单：`https://updates.menkange.com/android/update.json`
-- APK：优先使用 `updates.menkange.com/android/` 同域镜像；`addedf/video-downloader` 的 GitHub Releases 作为备用发布入口
+- APK：优先使用 `updates.menkange.com/android/` 同域镜像；`addedf/video-downloader-v2` 的 GitHub Releases 作为备用发布入口
 
 下载完成后，App 还会校验 SHA-256、包名、`versionCode` 和签名证书，全部通过才会打开 Android 系统安装页。首次安装应用内更新时，还需要在系统页面开启“允许来自此来源”；v2.3.3 起会在跳转前明确提示，并在返回后自动继续安装。
 

@@ -18,7 +18,7 @@ class UpdateManifestParserTest {
     @Test(expected = IllegalArgumentException::class)
     fun rejectsUntrustedApkHost() {
         UpdateManifestParser.parse(validManifest().replace(
-            "https://github.com/addedf/video-downloader/releases/download/v2.1.0/app.apk",
+            "https://github.com/addedf/video-downloader-v2/releases/download/v2.1.0/app.apk",
             "https://example.com/app.apk",
         ))
     }
@@ -26,7 +26,7 @@ class UpdateManifestParserTest {
     @Test
     fun acceptsOwnedUpdateHostApk() {
         val manifest = validManifest().replace(
-            "https://github.com/addedf/video-downloader/releases/download/v2.1.0/app.apk",
+            "https://github.com/addedf/video-downloader-v2/releases/download/v2.1.0/app.apk",
             "https://updates.menkange.com/android/DouYinDownloader-v2.3.3-arm64-v8a.apk",
         )
 
@@ -57,13 +57,26 @@ class UpdateManifestParserTest {
         assertFalse(AppUpdateConfig.isAllowedManifestUrl("https://updates.menkange.com.evil.test/android/update.json"))
     }
 
+    @Test
+    fun acceptsOnlyV2RepoReleaseApk() {
+        assertTrue(AppUpdateConfig.isAllowedApkUrl(
+            "https://github.com/addedf/video-downloader-v2/releases/download/v2.1.0/app.apk"
+        ))
+        assertFalse(AppUpdateConfig.isAllowedApkUrl(
+            "https://github.com/addedf/video-downloader/releases/download/v2.1.0/app.apk"
+        ))
+        assertFalse(AppUpdateConfig.isAllowedApkUrl(
+            "https://github.com/addedf/video-downloader-v2/releases/download/v2.1.0/app.apk?token=secret"
+        ))
+    }
+
     private fun validManifest() = """
         {
           "schemaVersion": 1,
           "versionCode": 5,
           "versionName": "2.1.0",
           "minSupportedVersionCode": 4,
-          "apkUrl": "https://github.com/addedf/video-downloader/releases/download/v2.1.0/app.apk",
+          "apkUrl": "https://github.com/addedf/video-downloader-v2/releases/download/v2.1.0/app.apk",
           "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "changelog": "修复问题",
           "publishedAt": "2026-07-28T15:00:00Z"

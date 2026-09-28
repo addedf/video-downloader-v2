@@ -13,7 +13,7 @@ object AppUpdateConfig {
 
     private const val UPDATE_HOST = "updates.menkange.com"
     private const val GITHUB_HOST = "github.com"
-    private const val GITHUB_RELEASE_PREFIX = "/addedf/video-downloader/releases/download/"
+    private const val GITHUB_RELEASE_PREFIX = "/addedf/video-downloader-v2/releases/download/"
 
     fun isAllowedManifestUrl(value: String): Boolean {
         val uri = parseSecureUri(value) ?: return false
