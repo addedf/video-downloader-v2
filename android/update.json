@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "versionCode": 12,
+  "versionName": "2.4.0",
+  "minSupportedVersionCode": 5,
+  "apkUrl": "https://updates.menkange.com/android/DouYinDownloader-v2.4.0-arm64-v8a.apk",
+  "sha256": "7544ba5133e90881b9aa0b83ea5abac6ca8d19bf7e7964d718eaaeed18157c6a",
+  "changelog": "应用内更新通道迁移到 video-downloader-v2 仓库：更新域名恢复服务，GitHub Release 同步提供安装包；应用功能与 v2.3.4 一致。",
+  "publishedAt": "2026-09-28T14:32:18Z"
+}
