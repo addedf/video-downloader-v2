@@ -12,6 +12,10 @@ from utils.validators import is_short_url, sanitize_filename
 
 
 SUPPORTED_RESOURCE_TYPES = {"video", "image", "cover", "audio"}
+SUPPORTED_WORK_TYPES = {"video", "gallery", "live_photo"}
+_MAX_SNAPSHOT_RESOURCES = 100
+_MAX_URLS_PER_RESOURCE = 8
+_MAX_URL_LENGTH = 4096
 
 
 def select_download_source_url(
@@ -55,7 +59,7 @@ def parse_download_request(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     if not _non_empty_string(source.get("url")) or not _non_empty_string(source.get("id")):
         raise ValueError("下载选择缺少有效的作品链接或 ID")
     expected_work_type = request.get("expected_work_type")
-    if expected_work_type not in {"video", "gallery", "live_photo"}:
+    if expected_work_type not in SUPPORTED_WORK_TYPES:
         raise ValueError("下载选择包含无效的作品类型")
     selection = request.get("selection")
     if not isinstance(selection, dict):
@@ -70,7 +74,170 @@ def parse_download_request(raw: Optional[str]) -> Optional[Dict[str, Any]]:
         raise ValueError("resource_ids 不能包含空值")
     if not isinstance(selection.get("include_live_video", False), bool):
         raise ValueError("include_live_video 必须是布尔值")
+    snapshot = request.get("snapshot")
+    if snapshot is not None:
+        request["snapshot"] = _validate_snapshot(snapshot, source, expected_work_type)
     return request
+
+
+def build_snapshot_download_context(
+    request: Optional[Dict[str, Any]],
+) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    """Build the downloader's minimal aweme/work inputs from a validated snapshot."""
+    if not isinstance(request, dict):
+        return None
+    snapshot = request.get("snapshot")
+    if not isinstance(snapshot, dict):
+        return None
+
+    grouped: Dict[str, List[Dict[str, Any]]] = {
+        "videos": [],
+        "images": [],
+        "covers": [],
+        "audios": [],
+    }
+    for resource in snapshot.get("resources") or []:
+        resource_type = str(resource.get("type") or "")
+        grouped[_resource_bucket(resource_type)].append(resource)
+
+    live_video_count = sum(
+        1
+        for resource in grouped["images"]
+        if isinstance(resource.get("live_video"), dict)
+        and resource["live_video"].get("available")
+    )
+    work = {
+        "type": snapshot["work_type"],
+        "title": snapshot.get("title") or "无标题作品",
+        "author": {"id": "", "name": snapshot.get("author") or "未知作者"},
+        "capabilities": {
+            "has_video": bool(grouped["videos"]),
+            "has_images": bool(grouped["images"]),
+            "has_cover": bool(grouped["covers"]),
+            "has_audio": bool(grouped["audios"]),
+            "has_live_video": live_video_count > 0,
+        },
+        "counts": {
+            "videos": len(grouped["videos"]),
+            "images": len(grouped["images"]),
+            "covers": len(grouped["covers"]),
+            "audios": len(grouped["audios"]),
+            "live_videos": live_video_count,
+        },
+        "resources": grouped,
+    }
+    aweme_data = {"aweme_id": snapshot["source_id"]}
+    return aweme_data, work
+
+
+def _validate_snapshot(
+    snapshot: Any,
+    source: Dict[str, Any],
+    expected_work_type: str,
+) -> Dict[str, Any]:
+    if not isinstance(snapshot, dict):
+        raise ValueError("下载快照格式错误")
+    source_id = snapshot.get("source_id")
+    if not _non_empty_string(source_id) or source_id.strip() != str(source.get("id") or "").strip():
+        raise ValueError("下载快照与作品 ID 不一致")
+    work_type = snapshot.get("work_type")
+    if work_type not in SUPPORTED_WORK_TYPES or work_type != expected_work_type:
+        raise ValueError("下载快照包含无效的作品类型")
+    title = snapshot.get("title", "")
+    author = snapshot.get("author", "")
+    if not isinstance(title, str) or not isinstance(author, str):
+        raise ValueError("下载快照标题或作者格式错误")
+    resources = snapshot.get("resources")
+    if not isinstance(resources, list) or not resources:
+        raise ValueError("下载快照没有可用资源")
+    if len(resources) > _MAX_SNAPSHOT_RESOURCES:
+        raise ValueError("下载快照资源数量过多")
+
+    normalized_resources: List[Dict[str, Any]] = []
+    seen_ids = set()
+    for resource in resources:
+        normalized = _validate_snapshot_resource(resource)
+        if normalized["id"] in seen_ids:
+            raise ValueError("下载快照包含重复资源 ID")
+        seen_ids.add(normalized["id"])
+        normalized_resources.append(normalized)
+    return {
+        "source_id": source_id.strip(),
+        "title": title[:500],
+        "author": author[:200],
+        "work_type": work_type,
+        "resources": normalized_resources,
+    }
+
+
+def _validate_snapshot_resource(resource: Any) -> Dict[str, Any]:
+    if not isinstance(resource, dict):
+        raise ValueError("下载快照资源格式错误")
+    resource_id = resource.get("id")
+    resource_type = resource.get("type")
+    if not _non_empty_string(resource_id) or len(resource_id.strip()) > 128:
+        raise ValueError("下载快照资源 ID 无效")
+    if resource_type not in SUPPORTED_RESOURCE_TYPES:
+        raise ValueError("下载快照资源类型无效")
+    urls = _validate_snapshot_urls(resource.get("download_urls"), required=True)
+    live = resource.get("live_video")
+    normalized_live = None
+    if live is not None:
+        if not isinstance(live, dict) or not isinstance(live.get("available", False), bool):
+            raise ValueError("下载快照 Live 视频格式错误")
+        live_urls = _validate_snapshot_urls(
+            live.get("download_urls", []), required=bool(live.get("available"))
+        )
+        normalized_live = {
+            "available": bool(live.get("available")),
+            "download_urls": live_urls,
+            "width": _optional_non_negative_int(live.get("width")),
+            "height": _optional_non_negative_int(live.get("height")),
+            "duration_ms": _optional_non_negative_int(live.get("duration_ms")),
+            "format_hint": str(live.get("format_hint") or "")[:16],
+        }
+    return {
+        "id": resource_id.strip(),
+        "index": _optional_non_negative_int(resource.get("index")) or 0,
+        "type": resource_type,
+        "title": str(resource.get("title") or "")[:200],
+        "download_urls": urls,
+        "width": _optional_non_negative_int(resource.get("width")),
+        "height": _optional_non_negative_int(resource.get("height")),
+        "duration_ms": _optional_non_negative_int(resource.get("duration_ms")),
+        "format_hint": str(resource.get("format_hint") or "")[:16],
+        "live_video": normalized_live,
+    }
+
+
+def _validate_snapshot_urls(value: Any, *, required: bool) -> List[str]:
+    if not isinstance(value, list) or len(value) > _MAX_URLS_PER_RESOURCE:
+        raise ValueError("下载快照媒体地址格式错误")
+    urls: List[str] = []
+    for raw_url in value:
+        if not isinstance(raw_url, str) or len(raw_url) > _MAX_URL_LENGTH:
+            raise ValueError("下载快照媒体地址无效")
+        parsed = urlparse(raw_url)
+        if (
+            parsed.scheme.lower() != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("下载快照只允许 HTTPS 媒体地址")
+        if raw_url not in urls:
+            urls.append(raw_url)
+    if required and not urls:
+        raise ValueError("下载快照资源缺少 HTTPS 媒体地址")
+    return urls
+
+
+def _optional_non_negative_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("下载快照资源尺寸或时长无效")
+    return value
 
 
 async def download_selected_resources(
@@ -257,15 +424,9 @@ def _candidate_urls(
     for url in resource.get("download_urls") or []:
         if not isinstance(url, str) or not url:
             continue
-        headers = downloader._download_headers()
-        host = (urlparse(url).hostname or "").lower()
-        if host.endswith("douyin.com") and "X-Bogus=" not in url:
-            try:
-                url, user_agent = downloader.api_client.sign_url(url)
-                headers = downloader._download_headers(user_agent=user_agent)
-            except Exception:
-                pass
-        result.append((url, headers))
+        if not url.startswith("https://"):
+            continue
+        result.append((url, downloader._download_headers()))
     deduped: List[Tuple[str, Dict[str, str]]] = []
     seen = set()
     for candidate in result:

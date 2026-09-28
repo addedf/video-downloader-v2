@@ -11,8 +11,10 @@ DY_ROOT = PYTHON_ROOT / "dy"
 sys.path.insert(0, str(PYTHON_ROOT))
 sys.path.insert(0, str(DY_ROOT))
 
-from dy.cli.dy_resource_normalizer import normalize_aweme
+from dy.cli.dy_anonymous_share import canonicalize_aweme
+from dy.cli.dy_resource_normalizer import build_no_watermark_url, normalize_aweme
 from dy.cli.dy_selected_downloader import (
+    build_snapshot_download_context,
     download_selected_resources,
     parse_download_request,
     select_download_source_url,
@@ -69,6 +71,50 @@ class ResourceNormalizerTest(unittest.TestCase):
         self.assertEqual(1, work["counts"]["audios"])
         self.assertFalse(work["capabilities"]["has_live_video"])
 
+    def test_anonymous_playwm_payload_gets_watermark_zero_candidate(self):
+        aweme = base_aweme()
+        aweme["video"].update(
+            {
+                "play_addr": {
+                    "uri": "video-uri-123",
+                    "url_list": [
+                        "https://aweme.snssdk.com/aweme/v1/playwm/?video_id=video-uri-123"
+                    ],
+                },
+                "duration": 8_430,
+            }
+        )
+
+        work = normalize_aweme(aweme)
+        urls = work["resources"]["videos"][0]["download_urls"]
+
+        self.assertIn("watermark=0", urls[0])
+        self.assertIn("/aweme/v1/play/?", urls[0])
+        self.assertNotIn("playwm", urls[0])
+        self.assertEqual(
+            urls[1],
+            "https://aweme.snssdk.com/aweme/v1/playwm/?video_id=video-uri-123",
+        )
+        self.assertEqual(urls[0], build_no_watermark_url(aweme))
+
+    def test_explicit_clean_video_url_is_preferred_to_generated_endpoint(self):
+        aweme = base_aweme()
+        clean = "https://v99.douyinvod.com/video-clean.mp4"
+        aweme["video"].update(
+            {
+                "play_addr": {
+                    "uri": "video-uri-123",
+                    "url_list": [clean],
+                }
+            }
+        )
+
+        self.assertEqual(clean, build_no_watermark_url(aweme))
+        self.assertEqual(
+            clean,
+            normalize_aweme(aweme)["resources"]["videos"][0]["download_urls"][0],
+        )
+
     def test_pure_gallery_has_no_video_or_live_option(self):
         aweme = base_aweme()
         aweme["image_post_info"] = {"images": [image_item(1), image_item(2)]}
@@ -93,6 +139,50 @@ class ResourceNormalizerTest(unittest.TestCase):
         first, second = work["resources"]["images"]
         self.assertIn("image-1-live.mp4", first["live_video"]["download_urls"][0])
         self.assertIn("image-2-live.mp4", second["live_video"]["download_urls"][0])
+
+    def test_live_photo_camel_case_motion_video_gets_clean_candidate(self):
+        aweme = base_aweme()
+        aweme["imagePostInfo"] = {
+            "imageList": [
+                {
+                    "originImage": media("https://cdn.test/live-photo.jpg"),
+                    "motionPhoto": {
+                        "videoInfo": {
+                            "playAddr": {
+                                "uri": "live-video-uri-123",
+                                "urlList": [
+                                    "https://aweme.snssdk.com/aweme/v1/playwm/?video_id=live-video-uri-123"
+                                ],
+                            },
+                            "duration": 2400,
+                        }
+                    },
+                }
+            ]
+        }
+
+        work = normalize_aweme(canonicalize_aweme(aweme))
+
+        live = work["resources"]["images"][0]["live_video"]
+        self.assertTrue(live["available"])
+        self.assertIn("watermark=0", live["download_urls"][0])
+        self.assertNotIn("playwm", live["download_urls"][0])
+        self.assertEqual(2400, live["duration_ms"])
+
+    def test_live_photo_flattened_video_address_is_saved(self):
+        aweme = base_aweme()
+        aweme["image_post_info"] = {
+            "images": [
+                {
+                    "origin_image": media("https://cdn.test/live-photo.jpg"),
+                    "video_play_addr": media("https://cdn.test/live-photo.mov", 1080, 1440),
+                }
+            ]
+        }
+
+        live = normalize_aweme(aweme)["resources"]["images"][0]["live_video"]
+        self.assertTrue(live["available"])
+        self.assertTrue(any("live-photo.mov" in url for url in live["download_urls"]))
 
     def test_mixed_gallery_counts_only_images_with_motion_video(self):
         aweme = base_aweme()
@@ -239,6 +329,25 @@ def request_json(resource_type="image", include_live_video=False, **overrides):
     return json.dumps(payload, ensure_ascii=False)
 
 
+def snapshot_payload(resource_type="video", url="https://cdn.test/video.mp4"):
+    return {
+        "source_id": "123456",
+        "title": "预览标题",
+        "author": "预览作者",
+        "work_type": "video",
+        "resources": [
+            {
+                "id": "video_1",
+                "index": 1,
+                "type": resource_type,
+                "title": "无水印视频",
+                "download_urls": [url],
+                "format_hint": "mp4",
+            }
+        ],
+    }
+
+
 class DownloadRequestTest(unittest.TestCase):
     def test_parses_valid_request(self):
         request = parse_download_request(request_json(include_live_video=True))
@@ -273,6 +382,40 @@ class DownloadRequestTest(unittest.TestCase):
         self.assertEqual(
             "4.84 https://v.douyin.com/4og144EvMso/ 复制此链接", source_url
         )
+
+    def test_builds_download_context_from_valid_preview_snapshot(self):
+        request = parse_download_request(
+            request_json(
+                resource_type="video",
+                expected_work_type="video",
+                snapshot=snapshot_payload(),
+            )
+        )
+
+        aweme, work = build_snapshot_download_context(request)
+
+        self.assertEqual("123456", aweme["aweme_id"])
+        self.assertEqual("video", work["type"])
+        self.assertEqual(
+            ["https://cdn.test/video.mp4"],
+            work["resources"]["videos"][0]["download_urls"],
+        )
+
+    def test_rejects_unsafe_or_mismatched_preview_snapshot(self):
+        invalid_snapshots = [
+            {**snapshot_payload(), "source_id": "999999"},
+            snapshot_payload(url="http://cdn.test/video.mp4"),
+            {**snapshot_payload(), "resources": [{**snapshot_payload()["resources"][0], "id": ""}]},
+        ]
+        for snapshot in invalid_snapshots:
+            with self.subTest(snapshot=snapshot), self.assertRaises(ValueError):
+                parse_download_request(
+                    request_json(
+                        resource_type="video",
+                        expected_work_type="video",
+                        snapshot=snapshot,
+                    )
+                )
 
 
 class SelectedDownloaderTest(unittest.IsolatedAsyncioTestCase):

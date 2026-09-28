@@ -20,6 +20,27 @@ class DownloadRequestTest {
                 resourceIds = listOf("image_1"),
                 includeLiveVideo = true,
             ),
+            snapshot = DownloadSnapshot(
+                sourceId = "123",
+                title = "测试作品",
+                author = "测试作者",
+                workType = "live_photo",
+                resources = listOf(
+                    DownloadSnapshotResource(
+                        id = "image_1",
+                        index = 1,
+                        type = "image",
+                        title = "原图 01",
+                        downloadUrls = listOf("https://cdn.test/image.jpg"),
+                        formatHint = "jpg",
+                        liveVideo = DownloadSnapshotLiveVideo(
+                            available = true,
+                            downloadUrls = listOf("https://cdn.test/live.mp4"),
+                            formatHint = "mp4",
+                        ),
+                    )
+                ),
+            ),
         )
         val adapter = Moshi.Builder()
             .addLast(KotlinJsonAdapterFactory())
@@ -32,6 +53,9 @@ class DownloadRequestTest {
         assertTrue(json.contains("\"expected_work_type\":\"live_photo\""))
         assertTrue(json.contains("\"resource_type\":\"image\""))
         assertTrue(json.contains("\"include_live_video\":true"))
+        assertTrue(json.contains("\"source_id\":\"123\""))
+        assertTrue(json.contains("\"download_urls\":[\"https://cdn.test/image.jpg\"]"))
+        assertTrue(json.contains("\"live_video\""))
         assertEquals(request, adapter.fromJson(json))
     }
 }

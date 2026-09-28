@@ -22,7 +22,8 @@ class DyLoginModule : ILoginModule {
     override val userAgent: String = DEFAULT_USER_AGENT
 
     override fun isLoggedIn(cookieString: String): Boolean {
-        return cookieString.contains("sessionid") || cookieString.contains("sso_uid_tt")
+        return listOf("sessionid", "sessionid_ss", "sid_guard", "sso_uid_tt")
+            .any { cookieString.contains("$it=") }
     }
 
     override fun shouldOverrideUrlLoading(
