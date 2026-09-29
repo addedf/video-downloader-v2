@@ -6,10 +6,6 @@ import com.zemin.downloader.common.util.LocalStorage
 import com.zemin.downloader.common.util.MediaStorageManager
 import java.io.File
 
-/**
- * @author maozemin@coocaa.com
- * @desc
- */
 abstract class BaseStoreModule : IStoreModule {
     override fun loggedIn(): Boolean {
         return hasCookie()

@@ -3,10 +3,6 @@ package com.zemin.downloader.common
 import android.net.Uri
 import java.io.File
 
-/**
- * @author maozemin@coocaa.com
- * @desc
- */
 interface IStoreModule : IBaseBusinessModule {
     fun loggedIn(): Boolean
 

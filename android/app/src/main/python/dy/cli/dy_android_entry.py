@@ -26,7 +26,7 @@ from .dy_selected_downloader import (
 )
 from common.android_flow_logger import AndroidFlowLogger, new_flow_logger, url_preview
 from common.android_progress_reporter import AndroidProgressReporter
-from common.android_utils import build_error_response, extract_first_url
+from common.android_utils import build_error_response, extract_first_url, redact_sensitive_text
 from config import ConfigLoader
 from utils.cookie_utils import parse_cookie_header, sanitize_cookies
 
@@ -125,57 +125,9 @@ async def _resolve_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, 
         diagnostics["error"] = "请先粘贴抖音分享文本或链接"
         return _error("请先粘贴抖音分享文本或链接", diagnostics=diagnostics)
 
-    try:
-        with flow.stage("resolve_public_share", input=url_preview(input_text)):
-            resolved = await resolve_public_douyin(input_text, proxy=config.get("proxy"))
-    except AnonymousDouyinError as exc:
-        _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
-        diagnostics["response_summary"] = _response_summary(str(exc), "public_share")
-        cookies = _runtime_cookies(config)
-        if not cookies:
-            diagnostics["error"] = _safe_diagnostic_text(str(exc))
-            return _error(str(exc), timings=dict(flow.timings), diagnostics=diagnostics)
-        diagnostics["retry_count"] = 1
-        diagnostics["fallback_used"] = True
-        diagnostics["channel"] = "cookie_fallback"
-        try:
-            with flow.stage("resolve_cookie_fallback", input=url_preview(input_text)):
-                resolved = await _resolve_with_cookies(
-                    input_text,
-                    cookies=cookies,
-                    proxy=config.get("proxy"),
-                )
-        except Exception as fallback_exc:
-            _append_stage(
-                diagnostics,
-                "resolve_cookie_fallback",
-                "failed",
-                flow.timings.get("resolve_cookie_fallback_ms"),
-                fallback_exc,
-            )
-            flow.warning("resolve_cookie_fallback.failed", error=fallback_exc.__class__.__name__)
-            resolved = None
-        if resolved is None:
-            if not any(stage.get("name") == "resolve_cookie_fallback" for stage in diagnostics["stages"]):
-                _append_stage(
-                    diagnostics,
-                    "resolve_cookie_fallback",
-                    "failed",
-                    flow.timings.get("resolve_cookie_fallback_ms"),
-                    AnonymousDouyinError("cookie detail response: no work data"),
-                )
-            diagnostics["error"] = _safe_diagnostic_text(str(exc))
-            return _error(str(exc), timings=dict(flow.timings), diagnostics=diagnostics)
-        _append_stage(diagnostics, "resolve_cookie_fallback", "done", flow.timings.get("resolve_cookie_fallback_ms"))
-        diagnostics["response_summary"] = "cookie detail response: work data available"
-    except Exception as exc:
-        _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
-        diagnostics["error"] = _safe_diagnostic_text(str(exc))
-        diagnostics["response_summary"] = _response_summary(str(exc), "public_share")
-        return _error(str(exc), timings=dict(flow.timings), diagnostics=diagnostics)
-    else:
-        _append_stage(diagnostics, "resolve_public_share", "done", flow.timings.get("resolve_public_share_ms"))
-        diagnostics["response_summary"] = "public share response: work data available"
+    resolved = await _resolve_anonymous_or_cookie_fallback(input_text, config, flow, diagnostics)
+    if resolved is None:
+        return _error(diagnostics["error"], timings=dict(flow.timings), diagnostics=diagnostics)
 
     flow.mark_total()
     response = _build_response(resolved)
@@ -239,54 +191,15 @@ async def _download_async(
         # failed do we refresh the public page once as a compatibility fallback.
         flow.info("download_preview_snapshot.exhausted", fallback="resolve_public_share")
 
-    try:
-        with flow.stage("resolve_public_share", input=url_preview(source_input)):
-            resolved = await resolve_public_douyin(source_input, proxy=config.get("proxy"))
-    except AnonymousDouyinError as exc:
-        diagnostics = _new_diagnostics(source_input)
-        _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
-        diagnostics["response_summary"] = _response_summary(str(exc), "public_share")
-        cookies = _runtime_cookies(config)
-        if not cookies:
-            diagnostics["error"] = _safe_diagnostic_text(str(exc))
-            return _error(str(exc), output_root=output_root, timings=dict(flow.timings), diagnostics=diagnostics)
-        diagnostics["retry_count"] = 1
-        diagnostics["fallback_used"] = True
-        diagnostics["channel"] = "cookie_fallback"
-        try:
-            with flow.stage("resolve_cookie_fallback", input=url_preview(source_input)):
-                resolved = await _resolve_with_cookies(
-                    source_input,
-                    cookies=cookies,
-                    proxy=config.get("proxy"),
-                )
-        except Exception as fallback_exc:
-            _append_stage(diagnostics, "resolve_cookie_fallback", "failed", flow.timings.get("resolve_cookie_fallback_ms"), fallback_exc)
-            flow.warning("resolve_cookie_fallback.failed", error=fallback_exc.__class__.__name__)
-            resolved = None
-        if resolved is None:
-            if not any(stage.get("name") == "resolve_cookie_fallback" for stage in diagnostics["stages"]):
-                _append_stage(
-                    diagnostics,
-                    "resolve_cookie_fallback",
-                    "failed",
-                    flow.timings.get("resolve_cookie_fallback_ms"),
-                    AnonymousDouyinError("cookie detail response: no work data"),
-                )
-            diagnostics["error"] = _safe_diagnostic_text(str(exc))
-            return _error(str(exc), output_root=output_root, timings=dict(flow.timings), diagnostics=diagnostics)
-        _append_stage(diagnostics, "resolve_cookie_fallback", "done", flow.timings.get("resolve_cookie_fallback_ms"))
-        diagnostics["response_summary"] = "cookie detail response: work data available"
-    except Exception as exc:
-        diagnostics = _new_diagnostics(source_input)
-        _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
-        diagnostics["error"] = _safe_diagnostic_text(str(exc))
-        diagnostics["response_summary"] = _response_summary(str(exc), "public_share")
-        return _error(str(exc), output_root=output_root, timings=dict(flow.timings), diagnostics=diagnostics)
-    else:
-        diagnostics = _new_diagnostics(source_input)
-        _append_stage(diagnostics, "resolve_public_share", "done", flow.timings.get("resolve_public_share_ms"))
-        diagnostics["response_summary"] = "public share response: work data available"
+    diagnostics = _new_diagnostics(source_input)
+    resolved = await _resolve_anonymous_or_cookie_fallback(source_input, config, flow, diagnostics)
+    if resolved is None:
+        return _error(
+            diagnostics["error"],
+            output_root=output_root,
+            timings=dict(flow.timings),
+            diagnostics=diagnostics,
+        )
 
     requested_id = str((request or {}).get("source", {}).get("id") or "")
     if requested_id and requested_id != resolved.source_id:
@@ -363,14 +276,74 @@ def _parse_cookies(cookie_header: str) -> Dict[str, str]:
     return sanitize_cookies(parse_cookie_header(raw))
 
 
-def _runtime_cookies(config: Any) -> Dict[str, str]:
-    getter = getattr(config, "get_cookies", None)
-    if callable(getter):
-        return sanitize_cookies(getter() or {})
-    value = config.get("cookies", {}) if hasattr(config, "get") else {}
-    if isinstance(value, dict):
-        return sanitize_cookies(value)
-    return _parse_cookies(str(value or ""))
+def _runtime_cookies(config: ConfigLoader) -> Dict[str, str]:
+    return sanitize_cookies(config.get_cookies() or {})
+
+
+async def _resolve_anonymous_or_cookie_fallback(
+    input_text: str,
+    config: Any,
+    flow: AndroidFlowLogger,
+    diagnostics: Dict[str, Any],
+) -> Optional[AnonymousDouyinResult]:
+    """匿名分享解析；失败且配置了 Cookie 时降级签名客户端再试一次。
+
+    成功返回 AnonymousDouyinResult；两条路线都没拿到作品数据时返回 None，
+    失败细节（stage/error/response_summary）写入传入的 diagnostics。
+    """
+    try:
+        with flow.stage("resolve_public_share", input=url_preview(input_text)):
+            resolved = await resolve_public_douyin(input_text, proxy=config.get("proxy"))
+    except AnonymousDouyinError as exc:
+        _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
+        diagnostics["response_summary"] = _response_summary(str(exc), "public_share")
+        cookies = _runtime_cookies(config)
+        if not cookies:
+            diagnostics["error"] = _safe_diagnostic_text(str(exc))
+            return None
+        diagnostics["retry_count"] = 1
+        diagnostics["fallback_used"] = True
+        diagnostics["channel"] = "cookie_fallback"
+        try:
+            with flow.stage("resolve_cookie_fallback", input=url_preview(input_text)):
+                resolved = await _resolve_with_cookies(
+                    input_text,
+                    cookies=cookies,
+                    proxy=config.get("proxy"),
+                )
+        except Exception as fallback_exc:
+            _append_stage(
+                diagnostics,
+                "resolve_cookie_fallback",
+                "failed",
+                flow.timings.get("resolve_cookie_fallback_ms"),
+                fallback_exc,
+            )
+            flow.warning("resolve_cookie_fallback.failed", error=fallback_exc.__class__.__name__)
+            resolved = None
+        if resolved is None:
+            if not any(stage.get("name") == "resolve_cookie_fallback" for stage in diagnostics["stages"]):
+                _append_stage(
+                    diagnostics,
+                    "resolve_cookie_fallback",
+                    "failed",
+                    flow.timings.get("resolve_cookie_fallback_ms"),
+                    AnonymousDouyinError("cookie detail response: no work data"),
+                )
+            diagnostics["error"] = _safe_diagnostic_text(str(exc))
+            return None
+        _append_stage(diagnostics, "resolve_cookie_fallback", "done", flow.timings.get("resolve_cookie_fallback_ms"))
+        diagnostics["response_summary"] = "cookie detail response: work data available"
+        return resolved
+    except Exception as exc:
+        _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
+        diagnostics["error"] = _safe_diagnostic_text(str(exc))
+        diagnostics["response_summary"] = _response_summary(str(exc), "public_share")
+        return None
+    else:
+        _append_stage(diagnostics, "resolve_public_share", "done", flow.timings.get("resolve_public_share_ms"))
+        diagnostics["response_summary"] = "public share response: work data available"
+        return resolved
 
 
 async def _resolve_with_cookies(
@@ -512,27 +485,9 @@ def _safe_diagnostic_url(value: Any) -> str:
 
 
 def _safe_diagnostic_text(value: Any) -> str:
-    import re
-
-    text = str(value or "").replace("\r", " ").replace("\n", " ").strip()
-    text = re.sub(
-        r"(?i)(cookie|authorization|token|msToken|x-bogus|a_bogus|share_sign|sessionid|sid_guard)\s*[:=]\s*[^\s,;|]+",
-        r"\1=[REDACTED]",
-        text,
-    )
-    text = re.sub(r"https?://[^\s]+", "[URL]", text)
-    return text[:320]
+    return redact_sensitive_text(value)
 
 
 def _safe_diagnostic_traceback(value: Any) -> str:
     """Preserve stack context while applying the same credential/URL redaction."""
-    import re
-
-    text = str(value or "").replace("\r", " ")
-    text = re.sub(
-        r"(?i)(cookie|authorization|token|msToken|x-bogus|a_bogus|share_sign|sessionid|sid_guard)\s*[:=]\s*[^\s,;|]+",
-        r"\1=[REDACTED]",
-        text,
-    )
-    text = re.sub(r"https?://[^\s]+", "[URL]", text)
-    return text[:8000]
+    return redact_sensitive_text(value, max_length=8000, flatten=False)

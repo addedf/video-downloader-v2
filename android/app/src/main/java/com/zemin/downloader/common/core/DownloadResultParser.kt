@@ -1,15 +1,12 @@
 package com.zemin.downloader.common.core
 
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.zemin.downloader.R
 import com.zemin.downloader.appContext
 import com.zemin.downloader.common.PyDownloadResult
 import com.zemin.downloader.common.bean.PyDownloadResponse
 
 object DownloadResultParser {
-    private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
-    private val adapter = moshi.adapter(PyDownloadResponse::class.java)
+    private val adapter = BridgeJson.moshi.adapter(PyDownloadResponse::class.java)
 
     fun parse(raw: String): PyDownloadResult {
         val response = adapter.fromJson(raw) ?: PyDownloadResponse()

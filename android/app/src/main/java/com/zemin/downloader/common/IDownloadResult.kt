@@ -6,7 +6,7 @@ import com.zemin.downloader.common.bean.PyDiagnosticsResponse
 
 interface IDownloadResult
 
-open class PyDownloadResult(
+data class PyDownloadResult(
     val ok: Boolean,
     val message: String,
     val error: String?,
@@ -21,18 +21,18 @@ open class PyDownloadResult(
     val diagnostics: PyDiagnosticsResponse? = null
 ) : IDownloadResult
 
-open class PyResolveResult(
+data class PyResolveResult(
     val ok: Boolean,
     val message: String,
-    val error: String?,
-    val sourceUrl: String?,
-    val sourceId: String?,
-    val title: String?,
-    val author: String?,
-    val coverUrl: String?,
-    val mediaType: String?,
+    val error: String? = null,
+    val sourceUrl: String? = null,
+    val sourceId: String? = null,
+    val title: String? = null,
+    val author: String? = null,
+    val coverUrl: String? = null,
+    val mediaType: String? = null,
     val resources: List<ResolvedResource> = emptyList(),
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
     val capabilities: ResolveCapabilities = ResolveCapabilities(),
     val counts: ResolveCounts = ResolveCounts(),
     val timings: Map<String, Int> = emptyMap(),

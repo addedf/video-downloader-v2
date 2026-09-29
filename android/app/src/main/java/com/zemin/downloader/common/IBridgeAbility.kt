@@ -1,9 +1,5 @@
 package com.zemin.downloader.common
 
-/**
- * @author maozemin@coocaa.com
- * @desc:
- */
 interface IBridgeAbility : IBaseModule {
     var initialized: Boolean
 

@@ -22,28 +22,22 @@ class ResolveResultParserTest {
     }
 
     @Test
-    fun parsesLegacyResponseForXhsCompatibility() {
+    fun rejectsResponseWithoutSchemaVersion() {
+        // v1 扁平协议已废弃：Python 三平台入口固定输出 schema_version: 2，
+        // 缺失版本号的响应当作协议错误拒绝，而不是静默兼容。
         val result = ResolveResultParser.parse(
             """
             {
               "ok": true,
               "message": "解析成功",
-              "source_url": "https://www.xiaohongshu.com/explore/1",
-              "source_id": "1",
-              "title": "旧协议",
-              "author": "作者",
-              "media_type": "image",
-              "resources": [
-                {"title": "图片 1", "media_type": "image", "download_urls": ["https://cdn.test/1.jpg"]}
-              ]
+              "title": "旧协议"
             }
             """.trimIndent()
         )
 
-        assertTrue(result.ok)
-        assertEquals(1, result.schemaVersion)
-        assertEquals(1, result.resources.size)
-        assertNull(result.error)
+        assertFalse(result.ok)
+        assertEquals(2, result.schemaVersion)
+        assertTrue(result.message.contains("版本"))
     }
 
     @Test

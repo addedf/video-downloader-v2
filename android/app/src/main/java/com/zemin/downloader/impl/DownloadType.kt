@@ -3,11 +3,6 @@ package com.zemin.downloader.impl
 import com.zemin.downloader.R
 import com.zemin.downloader.appContext
 
-/**
- * @author maozemin@coocaa.com
- * @desc:
- */
-
 const val TYPE_DOU_YIN = "Douyin"
 const val TYPE_XHS = "Xhs"
 const val TYPE_TWITTER = "X"

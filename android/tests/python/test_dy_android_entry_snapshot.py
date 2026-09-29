@@ -25,6 +25,9 @@ class FakeConfig:
     def get(self, key, default=None):
         return self.values.get(key, default)
 
+    def get_cookies(self):
+        return self.get("cookies") or {}
+
 
 def snapshot_request():
     return parse_download_request(

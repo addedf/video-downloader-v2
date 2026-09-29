@@ -10,10 +10,6 @@ import com.zemin.downloader.common.core.currentType
 import com.zemin.downloader.common.util.LocalStorage
 import kotlinx.coroutines.launch
 
-/**
- * @author maozemin@coocaa.com
- * @desc:
- */
 class DyLoginModule : ILoginModule {
     private var loadedIesDouyin = false
 

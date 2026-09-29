@@ -1,0 +1,33 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AppUpdateManager.kt$AppUpdateManager$activity.isFinishing || activity.isDestroyed || !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || updateDialog?.isShowing == true</ID>
+    <ID>ComplexCondition:AppUpdateManager.kt$AppUpdateManager$pendingInstallFile == null || activity.isFinishing || activity.isDestroyed || installPermissionDialog?.isShowing == true</ID>
+    <ID>ComplexCondition:CenteredVideoView.kt$CenteredVideoView$sourceWidth &lt;= 0 || sourceHeight &lt;= 0 || availableWidth &lt;= 0 || availableHeight &lt;= 0</ID>
+    <ID>ComplexCondition:DownloadProgressBubbleView.kt$DownloadProgressBubbleView$nextState.progress == null &amp;&amp; (nextState.stage == ProgressBubbleStage.RESOLVING || nextState.stage == ProgressBubbleStage.PREPARING) &amp;&amp; previousState?.stage != nextState.stage</ID>
+    <ID>ComplexCondition:PreviewAmbientColorPolicy.kt$PreviewAmbientColorPolicy$x &gt;= edgeSize &amp;&amp; x &lt; width - edgeSize &amp;&amp; y &gt;= edgeSize &amp;&amp; y &lt; height - edgeSize</ID>
+    <ID>ComplexCondition:PreviewAmbientColorPolicyTest.kt$PreviewAmbientColorPolicyTest$x == 0 || x == width - 1 || y == 0 || y == height - 1</ID>
+    <ID>EmptyFunctionBlock:ILoginModule.kt$NotLoginModule${ }</ID>
+    <ID>LongMethod:DownloadFlowController.kt$DownloadFlowController$fun startDownload( shareText: String, preview: PyResolveResult? = null, request: DownloadRequest? = null, )</ID>
+    <ID>LongMethod:ExceptionLogDialog.kt$fun showExceptionLogSheet(context: Context, onEmpty: () -&gt; Unit)</ID>
+    <ID>LoopWithTooManyJumpStatements:PreviewAmbientColorPolicy.kt$PreviewAmbientColorPolicy$for</ID>
+    <ID>MaxLineLength:DyLoginModule.kt$DyLoginModule.Companion$"Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 " + "(KHTML, like Gecko) Chrome/131.0.6778.135 Mobile Safari/537.36"</ID>
+    <ID>NestedBlockDepth:ApkDownloader.kt$ApkDownloader$private suspend fun downloadOnce( info: AppUpdateInfo, partialFile: File, apkFile: File, onProgress: (Progress) -&gt; Unit, ): File</ID>
+    <ID>NewLineAtEndOfFile:BaseBridgeAbility.kt$com.zemin.downloader.common.base.BaseBridgeAbility.kt</ID>
+    <ID>NewLineAtEndOfFile:BaseStoreModule.kt$com.zemin.downloader.common.base.BaseStoreModule.kt</ID>
+    <ID>NewLineAtEndOfFile:BridgeAbilityExt.kt$com.zemin.downloader.common.core.BridgeAbilityExt.kt</ID>
+    <ID>NewLineAtEndOfFile:DyStoreModule.kt$com.zemin.downloader.impl.dy.DyStoreModule.kt</ID>
+    <ID>NewLineAtEndOfFile:ExampleUnitTest.kt$com.zemin.downloader.ExampleUnitTest.kt</ID>
+    <ID>NewLineAtEndOfFile:IBaseModule.kt$com.zemin.downloader.common.IBaseModule.kt</ID>
+    <ID>NewLineAtEndOfFile:IBridgeAbility.kt$com.zemin.downloader.common.IBridgeAbility.kt</ID>
+    <ID>NewLineAtEndOfFile:ILoginModule.kt$com.zemin.downloader.common.ILoginModule.kt</ID>
+    <ID>NewLineAtEndOfFile:IStoreModule.kt$com.zemin.downloader.common.IStoreModule.kt</ID>
+    <ID>NewLineAtEndOfFile:XhsBridgeAbility.kt$com.zemin.downloader.impl.xhs.XhsBridgeAbility.kt</ID>
+    <ID>NewLineAtEndOfFile:XhsLoginModule.kt$com.zemin.downloader.impl.xhs.XhsLoginModule.kt</ID>
+    <ID>NewLineAtEndOfFile:XhsStoreModule.kt$com.zemin.downloader.impl.xhs.XhsStoreModule.kt</ID>
+    <ID>ThrowsCount:ApkDownloader.kt$ApkDownloader$private suspend fun downloadOnce( info: AppUpdateInfo, partialFile: File, apkFile: File, onProgress: (Progress) -&gt; Unit, ): File</ID>
+    <ID>ThrowsCount:SecureUpdateHttpClient.kt$SecureUpdateHttpClient$private fun openFollowingRedirects( initialUrl: String, acceptCodes: Set&lt;Int&gt;, rangeStart: Long, isAllowedUrl: (String) -&gt; Boolean, ): HttpURLConnection</ID>
+    <ID>VariableNaming:BaseBridgeAbility.kt$BaseBridgeAbility$protected open val TAG = "BaseBridgeAbility"</ID>
+  </CurrentIssues>
+</SmellBaseline>

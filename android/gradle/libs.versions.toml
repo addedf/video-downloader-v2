@@ -14,6 +14,7 @@ lifecycle = "2.7.0"
 coroutines  = "1.7.3"
 chaquopy = "17.0.0"
 moshi = "1.15.2"
+detekt = "1.23.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,3 +39,4 @@ moshi-kotlin = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "mosh
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 chaquopy = { id = "com.chaquo.python", version.ref = "chaquopy" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

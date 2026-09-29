@@ -27,6 +27,10 @@ object CookieVault {
         }
     }
 
+    /**
+     * 读取时兼容历史明文 Cookie：读到即顺手加密回写（一次性迁移）。
+     * 这是唯一会读明文键的地方，不要在别处直接取原始 key 的值。
+     */
     fun getCookie(prefs: SharedPreferences, key: String): String? {
         val encrypted = prefs.getString(encryptedKey(key), null)
         if (!encrypted.isNullOrBlank()) return decrypt(encrypted)

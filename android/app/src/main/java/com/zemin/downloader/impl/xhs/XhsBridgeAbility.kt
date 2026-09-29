@@ -4,10 +4,6 @@ import com.zemin.downloader.common.IStoreModule
 import com.zemin.downloader.common.base.BaseBridgeAbility
 import com.zemin.downloader.impl.DownloadType
 
-/**
- * @author maozemin@coocaa.com
- * @desc:
- */
 class XhsBridgeAbility : BaseBridgeAbility() {
     override val TAG = "XhsBridgeAbility"
 

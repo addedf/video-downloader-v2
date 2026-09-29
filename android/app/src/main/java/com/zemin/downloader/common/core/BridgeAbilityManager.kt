@@ -5,6 +5,7 @@ import com.zemin.downloader.common.IBridgeAbility
 import com.zemin.downloader.common.util.LocalStorage
 import com.zemin.downloader.impl.DownloadType
 import com.zemin.downloader.impl.dy.DyBridgeAbility
+import com.zemin.downloader.impl.x.XBridgeAbility
 import com.zemin.downloader.impl.xhs.XhsBridgeAbility
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,7 +63,7 @@ object BridgeAbilityManager {
         val ability = when (downloadType) {
             DownloadType.DOU_YIN -> DyBridgeAbility()
             DownloadType.XIAO_HONG_SHU -> XhsBridgeAbility()
-            DownloadType.TWITTER -> com.zemin.downloader.impl.x.XBridgeAbility()
+            DownloadType.TWITTER -> XBridgeAbility()
         }
         abilityCache[downloadType] = ability
         return ability

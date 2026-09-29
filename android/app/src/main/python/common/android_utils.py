@@ -7,6 +7,30 @@ from urllib.parse import urlparse
 URL_PATTERN = re.compile(r"https?://[^\s\"'<>\]]+")
 URL_TRAILING_PUNCTUATION = ".,;，。；)"
 TMP_SUFFIX = ".tmp"
+SENSITIVE_KEY_PATTERN = re.compile(
+    r"(?i)(cookie|authorization|token|msToken|x-bogus|a_bogus|share_sign|sessionid|sid_guard)\s*[:=]\s*[^\s,;|]+"
+)
+URL_ELISION_PATTERN = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+
+
+def redact_sensitive_text(
+    value: Any,
+    *,
+    max_length: int = 320,
+    flatten: bool = True,
+) -> str:
+    """Strip credentials and full URLs before the text lands in diagnostics or logs.
+
+    flatten=True 把换行折叠成空格（用于单行摘要）；False 保留换行（用于 traceback）。
+    """
+    text = str(value or "")
+    if flatten:
+        text = text.replace("\r", " ").replace("\n", " ").strip()
+    else:
+        text = text.replace("\r", " ")
+    text = SENSITIVE_KEY_PATTERN.sub(r"\1=[REDACTED]", text)
+    text = URL_ELISION_PATTERN.sub("[URL]", text)
+    return text[:max_length]
 
 
 def extract_first_url(text: str) -> Optional[str]:

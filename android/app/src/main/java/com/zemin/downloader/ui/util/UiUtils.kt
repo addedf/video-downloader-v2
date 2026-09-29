@@ -3,10 +3,6 @@ package com.zemin.downloader.ui.util
 import android.content.Intent
 import com.zemin.downloader.appContext
 
-/**
- * @author maozemin@coocaa.com
- * @desc
- */
 val URL_PATTERN = Regex("https?://[^\\s\\\"'<>\\]]+")
 
 fun extractSharedText(intent: Intent?): String {

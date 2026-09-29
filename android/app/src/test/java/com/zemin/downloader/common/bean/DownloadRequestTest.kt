@@ -17,7 +17,6 @@ class DownloadRequestTest {
             expectedWorkType = "live_photo",
             selection = DownloadSelection(
                 resourceType = "image",
-                resourceIds = listOf("image_1"),
                 includeLiveVideo = true,
             ),
             snapshot = DownloadSnapshot(

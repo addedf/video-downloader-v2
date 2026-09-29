@@ -3,10 +3,6 @@ package com.zemin.downloader.common.base
 import android.util.Log
 import com.zemin.downloader.common.IBridgeAbility
 
-/**
- * @author maozemin@coocaa.com
- * @desc
- */
 abstract class BaseBridgeAbility : IBridgeAbility {
     protected open val TAG = "BaseBridgeAbility"
 
@@ -17,7 +13,7 @@ abstract class BaseBridgeAbility : IBridgeAbility {
             return true
         }
 
-        val initSuccess  = try {
+        val initSuccess = try {
             downloadModule.warmUp()
             true
         } catch (e: Exception) {

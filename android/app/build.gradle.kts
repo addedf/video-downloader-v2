@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.chaquopy)
+    alias(libs.plugins.detekt)
 }
 
 android {
@@ -76,7 +77,6 @@ dependencies {
 
     // Lifecycle
     implementation(libs.lifecycle.runtime.ktx)
-    implementation(libs.lifecycle.viewmodel.ktx)
 
     // 序列化
     implementation(libs.moshi.kotlin)
@@ -100,4 +100,10 @@ chaquopy {
             install("rich>=14.0.0")
         }
     }
+}
+
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(files("$rootDir/detekt.yml"))
+    baseline = file("$rootDir/detekt-baseline.xml")
 }

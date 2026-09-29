@@ -1,11 +1,6 @@
 package com.zemin.downloader.common.util
 
-import android.content.SharedPreferences
 import android.net.Uri
-import android.preference.PreferenceManager
-import androidx.core.content.edit
-import com.zemin.downloader.appContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -13,60 +8,22 @@ import java.util.Locale
 import java.util.regex.Pattern
 
 /** A small, redacted diagnostic history kept locally for user initiated support logs. */
-object ExceptionLogStore {
-    private const val KEY_LOGS = "exception_diagnostic_logs"
-    private const val MAX_LOGS = 20
-    private val prefs: SharedPreferences by lazy {
-        PreferenceManager.getDefaultSharedPreferences(appContext)
-    }
+object ExceptionLogStore : JsonListStore<ExceptionLogRecord>(
+    prefsKey = "exception_diagnostic_logs",
+    maxSize = 20,
+) {
+    override fun idOf(record: ExceptionLogRecord): String = record.id
 
-    fun add(record: ExceptionLogRecord) {
-        val safeRecord = record.copy(
-            sourceUrl = ExceptionLogRecord.redactUrl(record.sourceUrl),
-            responseSummary = ExceptionLogRecord.redactText(record.responseSummary),
-            parseException = ExceptionLogRecord.redactText(record.parseException),
-            retryInfo = ExceptionLogRecord.redactText(record.retryInfo),
-            attempts = ExceptionLogRecord.redactText(record.attempts),
-            timings = ExceptionLogRecord.redactText(record.timings),
-        )
-        val records = listOf(safeRecord) + getAll().filterNot { it.id == safeRecord.id }
-        val array = JSONArray()
-        records.take(MAX_LOGS).forEach { array.put(it.toJson()) }
-        prefs.edit { putString(KEY_LOGS, array.toString()) }
-    }
+    override fun prepare(record: ExceptionLogRecord): ExceptionLogRecord = record.copy(
+        sourceUrl = ExceptionLogRecord.redactUrl(record.sourceUrl),
+        responseSummary = ExceptionLogRecord.redactText(record.responseSummary),
+        parseException = ExceptionLogRecord.redactText(record.parseException),
+        retryInfo = ExceptionLogRecord.redactText(record.retryInfo),
+        attempts = ExceptionLogRecord.redactText(record.attempts),
+        timings = ExceptionLogRecord.redactText(record.timings),
+    )
 
-    fun getAll(): List<ExceptionLogRecord> {
-        val raw = prefs.getString(KEY_LOGS, null).orEmpty()
-        if (raw.isBlank()) return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (index in 0 until array.length()) {
-                    array.optJSONObject(index)?.let { add(it.toRecord()) }
-                }
-            }
-        }.getOrDefault(emptyList())
-    }
-
-    fun clear() = prefs.edit { remove(KEY_LOGS) }
-
-    fun formatForCopy(record: ExceptionLogRecord): String = buildString {
-        appendLine("视频下载器异常日志")
-        appendLine("时间：${record.displayTime()}")
-        appendLine("平台：${record.platform}")
-        appendLine("操作：${record.operation}")
-        appendLine("渠道：${record.channel}")
-        appendLine("阶段：${record.stage}")
-        appendLine("作品链接：${record.sourceUrl}")
-        appendLine("状态：${record.status}")
-        appendLine("返回信息：${record.responseSummary}")
-        appendLine("解析异常：${record.parseException}")
-        appendLine("重试信息：${record.retryInfo}")
-        if (record.timings.isNotBlank()) appendLine("阶段耗时：${record.timings}")
-        if (record.attempts.isNotBlank()) appendLine("阶段记录：${record.attempts}")
-    }
-
-    private fun ExceptionLogRecord.toJson() = JSONObject().apply {
+    override fun ExceptionLogRecord.toJson() = JSONObject().apply {
         put("id", id)
         put("createdAt", createdAt)
         put("platform", platform)
@@ -82,7 +39,7 @@ object ExceptionLogStore {
         put("timings", timings)
     }
 
-    private fun JSONObject.toRecord() = ExceptionLogRecord(
+    override fun JSONObject.toRecord(): ExceptionLogRecord = ExceptionLogRecord(
         id = optString("id"),
         createdAt = optLong("createdAt"),
         platform = optString("platform"),
@@ -98,8 +55,21 @@ object ExceptionLogStore {
         timings = optString("timings"),
     )
 
-    private fun ExceptionLogRecord.displayTime(): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(createdAt))
+    fun formatForCopy(record: ExceptionLogRecord): String = buildString {
+        appendLine("视频下载器异常日志")
+        appendLine("时间：${record.displayTime}")
+        appendLine("平台：${record.platform}")
+        appendLine("操作：${record.operation}")
+        appendLine("渠道：${record.channel}")
+        appendLine("阶段：${record.stage}")
+        appendLine("作品链接：${record.sourceUrl}")
+        appendLine("状态：${record.status}")
+        appendLine("返回信息：${record.responseSummary}")
+        appendLine("解析异常：${record.parseException}")
+        appendLine("重试信息：${record.retryInfo}")
+        if (record.timings.isNotBlank()) appendLine("阶段耗时：${record.timings}")
+        if (record.attempts.isNotBlank()) appendLine("阶段记录：${record.attempts}")
+    }
 }
 
 data class ExceptionLogRecord(
@@ -121,6 +91,15 @@ data class ExceptionLogRecord(
         get() = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(createdAt))
 
     companion object {
+        /** Python diagnostics.channel 的人类可读名；无值时返回 null 由调用方决定默认渠道。 */
+        fun displayChannel(raw: String?): String? = raw?.takeIf { it.isNotBlank() }?.let { channel ->
+            when (channel) {
+                "cookie_fallback" -> "Cookie 兜底"
+                "anonymous" -> "匿名解析"
+                else -> channel
+            }
+        }
+
         fun redactUrl(value: String): String {
             val url = runCatching { Uri.parse(value) }.getOrNull() ?: return value.take(240)
             if (url.scheme.isNullOrBlank() || url.host.isNullOrBlank()) return value.take(240)

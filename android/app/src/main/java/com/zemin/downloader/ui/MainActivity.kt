@@ -1,116 +1,70 @@
 package com.zemin.downloader.ui
 
-import android.content.ActivityNotFoundException
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import android.graphics.RectF
-import android.net.Uri
 import android.os.Bundle
-import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
 import androidx.activity.addCallback
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.zemin.downloader.R
-import com.zemin.downloader.common.DownloadProgressListener
-import com.zemin.downloader.common.PyResolveResult
-import com.zemin.downloader.common.bean.PyDiagnosticsResponse
-import com.zemin.downloader.common.ResolvedResource
-import com.zemin.downloader.common.bean.DownloadRequest
-import com.zemin.downloader.common.bean.DownloadSelection
-import com.zemin.downloader.common.bean.DownloadSnapshot
-import com.zemin.downloader.common.bean.DownloadSnapshotLiveVideo
-import com.zemin.downloader.common.bean.DownloadSnapshotResource
-import com.zemin.downloader.common.bean.DownloadSource
-import com.zemin.downloader.common.base.BaseActivity
-import com.zemin.downloader.common.core.BridgeAbilityManager
-import com.zemin.downloader.common.core.DownloadModule
 import com.zemin.downloader.common.core.StoreModule
 import com.zemin.downloader.common.core.currentDownloadType
 import com.zemin.downloader.common.core.currentTitle
-import com.zemin.downloader.common.core.currentType
-import com.zemin.downloader.common.util.DownloadHistoryRecord
-import com.zemin.downloader.common.util.DownloadHistoryStore
-import com.zemin.downloader.common.util.ExceptionLogRecord
+import com.zemin.downloader.common.base.BaseActivity
 import com.zemin.downloader.common.util.ExceptionLogStore
-import com.zemin.downloader.common.util.formatBytes
+import com.zemin.downloader.common.util.DownloadHistoryStore
 import com.zemin.downloader.common.util.toast
 import com.zemin.downloader.databinding.ActivityMainBinding
 import com.zemin.downloader.impl.DownloadType
+import com.zemin.downloader.ui.download.DownloadFlowController
 import com.zemin.downloader.ui.motion.MotionBottomSheetController
 import com.zemin.downloader.ui.motion.UiMotion
+import com.zemin.downloader.ui.preview.PreviewSectionRenderer
 import com.zemin.downloader.ui.util.PlatformResolver
 import com.zemin.downloader.ui.util.extractSharedText
-import com.zemin.downloader.ui.preview.PreviewUiPolicy
-import com.zemin.downloader.ui.preview.PreviewImageController
-import com.zemin.downloader.ui.preview.PreviewRequestPolicy
-import com.zemin.downloader.ui.preview.ResourceTab
 import com.zemin.downloader.ui.view.DyActionButton
-import com.zemin.downloader.ui.view.ProgressBubbleDockSide
-import com.zemin.downloader.ui.view.ProgressBubblePolicy
-import com.zemin.downloader.ui.view.ProgressBubbleStage
 import com.zemin.downloader.update.AppUpdateManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.roundToInt
 
 class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::inflate) {
     // Activity fields are initialized before Context.attachBaseContext. Defer construction because
     // AppUpdateManager reads applicationContext and SharedPreferences in its initializer.
     private val appUpdateManager by lazy(LazyThreadSafetyMode.NONE) { AppUpdateManager(this) }
-    private var isDownloading = false
-    private var currentPreview: PyResolveResult? = null
-    private var currentPreviewInput: String? = null
+
+    lateinit var bubble: ProgressBubbleController
+        private set
+    lateinit var previewSection: PreviewSectionRenderer
+        private set
+    lateinit var downloadFlow: DownloadFlowController
+        private set
+
+    val ui: ActivityMainBinding get() = binding
+    val currentPlatformTitle: String get() = currentTitle
+
     private var suppressInputChangeHandling = false
     private var lastClipboardPromptUrl: String? = null
     private var pendingClipboardInput: String? = null
-    private var selectedResourceTab: ResourceTab = ResourceTab.IMAGE
-    private var availableResourceTabs: List<ResourceTab> = emptyList()
-    private var selectedPreviewIndex = 0
     private var systemInsetTop = 0
     private var systemInsetBottom = 0
     private var systemInsetLeft = 0
     private var systemInsetRight = 0
-    private var progressBubblePositioned = false
-    private var progressBubbleDockSide = ProgressBubbleDockSide.RIGHT
-    private var progressHideJob: Job? = null
     private lateinit var mineSheetController: MotionBottomSheetController
-    private lateinit var previewImages: PreviewImageController
-    private val lastProgressUiUpdatedAt = AtomicLong(PROGRESS_RECORD_INIT_TIME)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        previewImages = PreviewImageController(
-            context = this,
-            lifecycleOwner = this,
-            scope = lifecycleScope,
-            previewCard = binding.previewCard,
-            ambientView = binding.ivPreviewAmbient,
-            ambientScrim = binding.previewAmbientScrim,
-            currentView = binding.ivPreviewCover,
-            incomingView = binding.ivPreviewCoverIncoming,
-        )
+        bubble = ProgressBubbleController(this, lifecycleScope)
+        previewSection = PreviewSectionRenderer(this, lifecycleScope)
+        downloadFlow = DownloadFlowController(this)
         setupMotion()
-        setupProgressBubble()
+        bubble.setup()
+        previewSection.setup()
         binding.videoPreview.bindFullscreen(this)
         readSharedText(intent)
         appUpdateManager.checkOnStart()
@@ -120,12 +74,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 input.isEmpty() -> {
                     showError(getString(R.string.main_toast_empty_input, currentTitle))
                 }
-                isDownloading -> {
+                downloadFlow.isDownloading -> {
                     showError(getString(R.string.main_toast_task_running))
                 }
                 else -> {
                     UiMotion.performHaptic(binding.btnDownload, UiMotion.Haptic.TICK)
-                    resolveAndRenderPreview(input)
+                    downloadFlow.resolveAndRenderPreview(input)
                 }
             }
         }
@@ -138,30 +92,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 if (suppressInputChangeHandling) return
                 val input = s?.toString()?.trim().orEmpty()
-                if (input != currentPreviewInput) clearPreview()
+                if (input != previewSection.input) previewSection.clear()
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        binding.btnHistoryOpen.setOnClickListener {
-            openLatestHistoryFile()
-        }
-        binding.btnHistoryShare.setOnClickListener {
-            shareLatestHistoryFile()
-        }
-        binding.btnHistoryRetry.setOnClickListener {
-            retryLatestHistory()
-        }
+        binding.btnHistoryOpen.setOnClickListener { downloadFlow.openLatestHistoryFile() }
+        binding.btnHistoryShare.setOnClickListener { downloadFlow.shareLatestHistoryFile() }
+        binding.btnHistoryRetry.setOnClickListener { downloadFlow.retryLatestHistory() }
         binding.btnHistoryClear.setOnClickListener {
             DownloadHistoryStore.clear()
-            refreshHistoryUi()
+            downloadFlow.refreshHistoryUi()
             toast(getString(R.string.main_toast_history_cleared))
-        }
-        binding.btnImageTab.setOnClickListener { selectResourceTab(tabAt(0), userInitiated = true) }
-        binding.btnCoverTab.setOnClickListener { selectResourceTab(tabAt(1), userInitiated = true) }
-        binding.btnAudioTab.setOnClickListener { selectResourceTab(tabAt(2), userInitiated = true) }
-        binding.checkLiveVideo.setOnCheckedChangeListener { button, _ ->
-            if (button.isPressed) UiMotion.performHaptic(button, UiMotion.Haptic.TICK)
-            refreshSelectionUi()
         }
         binding.btnCopyLink.setOnClickListener {
             copyCurrentPreviewLink()
@@ -169,7 +110,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         }
         binding.btnSaveSheet.setOnClickListener {
             UiMotion.performHaptic(binding.btnSaveSheet, UiMotion.Haptic.TICK)
-            saveCurrentPreview()
+            downloadFlow.saveCurrentPreview()
         }
         binding.btnMine.setOnClickListener {
             UiMotion.performHaptic(binding.btnMine, UiMotion.Haptic.TICK)
@@ -195,12 +136,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             hideClipboardDialog()
             if (input.isNotBlank()) {
                 setInputText(input)
-                clearPreview()
-                resolveAndRenderPreview(input)
+                previewSection.clear()
+                downloadFlow.resolveAndRenderPreview(input)
             }
         }
         styleActionButtons()
-        refreshHistoryUi()
+        downloadFlow.refreshHistoryUi()
         refreshActionButton()
     }
 
@@ -223,624 +164,26 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     override fun onDestroy() {
-        progressHideJob?.cancel()
-        previewImages.dispose()
+        bubble.dispose()
+        previewSection.dispose()
         binding.videoPreview.stopPlayback()
         mineSheetController.hideImmediately()
         hideClipboardDialog(immediate = true)
         super.onDestroy()
     }
 
-    private fun resolveAndRenderPreview(inputText: String) {
-        val result = PlatformResolver.resolve(inputText)
-        if (result == null) {
-            showUnsupportedLink()
-            return
-        }
-
-        lifecycleScope.launch {
-            if (currentDownloadType != result.downloadType) {
-                BridgeAbilityManager.update(result.downloadType)
-            }
-            setUiEnabled(false)
-            cancelProgressBubbleHide()
-            binding.progressBubble.showResolving(
-                primaryText = getString(R.string.main_progress_resolving),
-                detailText = getString(R.string.main_progress_resolving_detail),
-            )
-            clearPreview()
-            try {
-                val preview = DownloadModule.resolve(result.normalizedInput)
-                if (!preview.ok) {
-                    recordResolveException(
-                        inputText = result.normalizedInput,
-                        stage = "解析结果校验",
-                        error = preview.error ?: preview.message,
-                        responseSummary = preview.diagnostics?.responseSummary
-                            ?.takeIf { it.isNotBlank() } ?: buildResolveResponseSummary(preview),
-                        retryInfo = preview.diagnostics?.let {
-                            "重试 ${it.retryCount} 次；Cookie 兜底：${if (it.fallbackUsed) "已使用" else "未使用"}"
-                        } ?: "可重新解析；登录后可尝试 Cookie 兜底",
-                        channelOverride = preview.diagnostics?.channel,
-                        stageOverride = preview.diagnostics?.stages?.lastOrNull()?.name,
-                        diagnostics = preview.diagnostics,
-                    )
-                    showError(preview.error ?: preview.message)
-                    return@launch
-                }
-                setInputText(result.normalizedInput)
-                if (preview.diagnostics?.channel == "cookie_fallback") {
-                    recordResolveException(
-                        inputText = result.normalizedInput,
-                        stage = preview.diagnostics?.stages?.lastOrNull()?.name ?: "resolve_cookie_fallback",
-                        error = "匿名解析失败，Cookie 兜底解析成功",
-                        responseSummary = preview.diagnostics?.responseSummary
-                            ?.takeIf { it.isNotBlank() } ?: buildResolveResponseSummary(preview),
-                        retryInfo = "匿名解析失败后使用 Cookie 兜底成功",
-                        channelOverride = "cookie_fallback",
-                        statusOverride = "兜底成功",
-                        diagnostics = preview.diagnostics,
-                    )
-                }
-                renderPreview(result.normalizedInput, preview)
-            } catch (e: Exception) {
-                recordResolveException(
-                    inputText = result.normalizedInput,
-                    stage = "解析调用",
-                    error = e.message ?: e::class.java.simpleName,
-                    responseSummary = "客户端异常：${e::class.java.simpleName}",
-                    retryInfo = "可重新解析；登录后可尝试 Cookie 兜底",
-                )
-                showError(
-                    getString(
-                        R.string.main_error_exception,
-                        e.message ?: getString(R.string.main_error_unknown)
-                    )
-                )
-            } finally {
-                setUiEnabled(true)
-                binding.progressBubble.hide()
-            }
-        }
-    }
-
-    private fun startDownload(
-        shareText: String,
-        preview: PyResolveResult? = null,
-        request: DownloadRequest? = null,
-    ) {
-        isDownloading = true
-        setUiEnabled(false)
-        cancelProgressBubbleHide()
-        binding.progressBubble.showPreparing(
-            primaryText = getString(R.string.main_progress_preparing),
-            detailText = getString(R.string.main_progress_preparing_detail),
-        )
-        lastProgressUiUpdatedAt.set(PROGRESS_RECORD_INIT_TIME)
-
-        lifecycleScope.launch {
-            var progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
-                ProgressBubbleStage.SUCCESS
-            )
-            val taskStartedAt = System.currentTimeMillis()
-            val historySourceUrl = preview?.sourceUrl ?: shareText
-            val historyTitle = preview?.title?.takeIf { it.isNotBlank() } ?: getString(
-                R.string.main_input_title_douyin
-            )
-            val historyMediaType = request?.selection?.let { selection ->
-                if (selection.resourceType == "image" && selection.includeLiveVideo) {
-                    "image+live_video"
-                } else {
-                    selection.resourceType
-                }
-            } ?: preview?.mediaType ?: currentType
-            try {
-                withContext(Dispatchers.IO) {
-                    StoreModule.cleanupDownloadCache()
-                }
-                val result = DownloadModule.download(
-                    inputText = shareText,
-                    request = request,
-                    progressListener = createDownloadProgressListener(),
-                )
-
-                if (result.files.isNotEmpty()) {
-                    binding.progressBubble.showFinalizing(
-                        primaryText = getString(R.string.main_progress_finalizing),
-                        detailText = getString(R.string.main_progress_finalizing_detail),
-                    )
-                }
-                val registeredUris = withContext(Dispatchers.IO) {
-                    result.files.map(::File).mapNotNull { file ->
-                        StoreModule.registerMediaFile(file)?.also {
-                            StoreModule.deleteTemporaryDownloadFile(file)
-                        }
-                    }
-                }
-
-                if (result.ok || result.skipped > 0) {
-                    withContext(Dispatchers.IO) {
-                        StoreModule.cleanupDownloadSidecars()
-                    }
-                    binding.progressBubble.showSuccess(
-                        primaryText = getString(R.string.main_progress_success),
-                        detailText = getString(R.string.main_progress_success_detail),
-                    )
-                    UiMotion.performHaptic(binding.progressBubble, UiMotion.Haptic.CONFIRM)
-                    saveDownloadHistory(
-                        sourceUrl = historySourceUrl,
-                        title = historyTitle,
-                        mediaType = historyMediaType,
-                        status = DownloadHistoryRecord.STATUS_SUCCESS,
-                        savedUris = registeredUris,
-                        errorMessage = null,
-                        createdAt = taskStartedAt,
-                    )
-                    toast(getString(R.string.main_toast_download_done))
-                } else {
-                    progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
-                        ProgressBubbleStage.ERROR
-                    )
-                    val errorMessage = result.error ?: result.message
-                    recordResolveException(
-                        inputText = shareText,
-                        operation = "下载",
-                        stage = result.diagnostics?.stages?.lastOrNull()?.name ?: "下载保存",
-                        error = errorMessage,
-                        responseSummary = result.diagnostics?.responseSummary
-                            ?.takeIf { it.isNotBlank() }
-                            ?: "ok=${result.ok}; success=${result.success}; failed=${result.failed}",
-                        retryInfo = result.diagnostics?.let {
-                            "重试 ${it.retryCount} 次；Cookie 兜底：${if (it.fallbackUsed) "已使用" else "未使用"}"
-                        } ?: "可重试下载",
-                        channelOverride = result.diagnostics?.channel,
-                        diagnostics = result.diagnostics,
-                    )
-                    saveDownloadHistory(
-                        sourceUrl = historySourceUrl,
-                        title = historyTitle,
-                        mediaType = historyMediaType,
-                        status = DownloadHistoryRecord.STATUS_FAILED,
-                        savedUris = emptyList(),
-                        errorMessage = errorMessage,
-                        createdAt = taskStartedAt,
-                    )
-                    showDownloadFailure(errorMessage)
-                }
-            } catch (e: Exception) {
-                progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
-                    ProgressBubbleStage.ERROR
-                )
-                val errorMessage = getString(
-                    R.string.main_error_exception,
-                    e.message ?: getString(R.string.main_error_unknown)
-                )
-                recordResolveException(
-                    inputText = shareText,
-                    operation = "下载",
-                    stage = "下载调用",
-                    error = errorMessage,
-                    responseSummary = "客户端异常：${e::class.java.simpleName}",
-                    retryInfo = "可重试下载",
-                )
-                saveDownloadHistory(
-                    sourceUrl = historySourceUrl,
-                    title = historyTitle,
-                    mediaType = historyMediaType,
-                    status = DownloadHistoryRecord.STATUS_FAILED,
-                    savedUris = emptyList(),
-                    errorMessage = errorMessage,
-                    createdAt = taskStartedAt,
-                )
-                showDownloadFailure(errorMessage)
-            } finally {
-                isDownloading = false
-                setUiEnabled(true)
-                refreshHistoryUi()
-                scheduleProgressBubbleHide(progressHideDelayMs)
-            }
-        }
-    }
-
-    private fun renderPreview(inputText: String, preview: PyResolveResult) {
-        val mediaTypeText = formatMediaType(preview.mediaType)
-        val selectedResourceCount = preview.resources.size
-        val title = preview.title.orEmpty().ifBlank { getString(R.string.main_preview_title_fallback) }
-        val author = preview.author.orEmpty().ifBlank { currentTitle }
-        val uiState = PreviewUiPolicy.stateFor(preview)
-        if (uiState.tabs.isEmpty()) {
-            clearPreview()
-            showError(getString(R.string.main_error_no_resources))
-            return
-        }
-
-        currentPreview = preview
-        currentPreviewInput = inputText
-        binding.tvPreviewTitle.text = title
-        binding.tvPreviewMeta.text = getString(
-            R.string.main_preview_meta_format,
-            author,
-            mediaTypeText,
-            selectedResourceCount,
-        )
-        configureTabButtons(uiState.tabs, preview)
-        refreshActionButton()
-        selectedResourceTab = uiState.defaultTab
-        binding.checkLiveVideo.isChecked = false
-        selectResourceTab(selectedResourceTab, userInitiated = false)
-        UiMotion.revealFromBelow(binding.previewSection)
-        UiMotion.performHaptic(binding.previewSection, UiMotion.Haptic.CONFIRM)
-    }
-
-    private fun clearPreview() {
-        currentPreview = null
-        currentPreviewInput = null
-        UiMotion.concealBelow(binding.previewSection)
-        previewImages.clear()
-        binding.videoPreview.stopPlayback()
-        binding.videoPreview.visibility = View.GONE
-        binding.thumbContainer.removeAllViews()
-        selectedPreviewIndex = 0
-        binding.checkLiveVideo.isChecked = false
-        binding.checkLiveVideo.visibility = View.GONE
-        binding.previewTabIndicator.visibility = View.INVISIBLE
-        availableResourceTabs = emptyList()
-        hideSheets()
-        refreshActionButton()
-    }
-
-    private fun refreshActionButton() {
-        binding.btnDownload.text = getString(R.string.main_button_download)
-    }
-
-    private fun selectResourceTab(tab: ResourceTab?, userInitiated: Boolean) {
-        val selectedTab = tab ?: return
-        val preview = currentPreview ?: return
-        val resources = PreviewUiPolicy.resourcesFor(preview, selectedTab)
-        if (resources.isEmpty()) return
-
-        val changed = selectedResourceTab != selectedTab
-        selectedResourceTab = selectedTab
-        binding.btnImageTab.isSelected = tabAt(0) == selectedTab
-        binding.btnCoverTab.isSelected = tabAt(1) == selectedTab
-        binding.btnAudioTab.isSelected = tabAt(2) == selectedTab
-        val selectedButton = listOf(
-            binding.btnImageTab,
-            binding.btnCoverTab,
-            binding.btnAudioTab,
-        )[availableResourceTabs.indexOf(selectedTab)]
-        val updateIndicator = {
-            if (currentPreview === preview && selectedResourceTab == selectedTab) {
-                UiMotion.animateTabIndicator(
-                    binding.previewTabIndicator,
-                    selectedButton,
-                    animated = userInitiated && changed,
-                )
-            }
-        }
-        if (userInitiated) updateIndicator() else binding.previewTabButtons.post { updateIndicator() }
-        updatePreviewLabels(0, resources.size, selectedTab)
-        selectedPreviewIndex = 0
-        renderThumbnails(resources, selectedTab)
-        updatePreviewResource(0, resources, selectedTab)
-        refreshSelectionUi()
-        if (userInitiated && changed) {
-            UiMotion.performHaptic(selectedButton, UiMotion.Haptic.TICK)
-        }
-    }
-
-    private fun configureTabButtons(tabs: List<ResourceTab>, preview: PyResolveResult) {
-        availableResourceTabs = tabs
-        val buttons = listOf(binding.btnImageTab, binding.btnCoverTab, binding.btnAudioTab)
-        buttons.forEachIndexed { index, button ->
-            val tab = tabs.getOrNull(index)
-            button.visibility = if (tab == null) View.GONE else View.VISIBLE
-            if (tab != null) {
-                val count = PreviewUiPolicy.resourcesFor(preview, tab).size
-                button.text = when (tab) {
-                    ResourceTab.VIDEO -> getString(R.string.main_preview_tab_primary_video, count)
-                    ResourceTab.IMAGE -> getString(R.string.main_preview_tab_image, count)
-                    ResourceTab.COVER -> getString(R.string.main_preview_tab_cover, count)
-                    ResourceTab.AUDIO -> getString(R.string.main_preview_tab_audio, count)
-                }
-            }
-        }
-    }
-
-    private fun tabAt(index: Int): ResourceTab? = availableResourceTabs.getOrNull(index)
-
-    private fun updatePreviewLabels(
-        index: Int,
-        total: Int,
-        tab: ResourceTab,
-    ) {
-        binding.tvPreviewCounter.text = when (tab) {
-            ResourceTab.IMAGE -> getString(
-                R.string.main_preview_counter_image_format,
-                index + 1,
-                total,
-            )
-            ResourceTab.VIDEO -> getString(
-                R.string.main_preview_counter_video_format,
-                index + 1,
-                total,
-            )
-            ResourceTab.COVER -> getString(R.string.main_preview_counter_cover)
-            ResourceTab.AUDIO -> getString(R.string.main_preview_tab_audio, total)
-        }
-    }
-
-    private fun refreshSelectionUi() {
-        val preview = currentPreview ?: return
-        val showLive = PreviewUiPolicy.shouldShowLiveOption(preview, selectedResourceTab)
-        if (!showLive && binding.checkLiveVideo.isChecked) {
-            binding.checkLiveVideo.isChecked = false
-        }
-        binding.checkLiveVideo.visibility = if (showLive) View.VISIBLE else View.GONE
-
-        val resourceCount = PreviewUiPolicy.resourcesFor(preview, selectedResourceTab).size
-        val includeLive = showLive && binding.checkLiveVideo.isChecked
-        binding.btnSaveSheet.text = when (selectedResourceTab) {
-            ResourceTab.VIDEO -> getString(R.string.main_save_video)
-            ResourceTab.IMAGE -> if (includeLive) {
-                getString(R.string.main_save_images_live)
-            } else {
-                getString(R.string.main_save_images, resourceCount)
-            }
-            ResourceTab.COVER -> getString(R.string.main_save_cover)
-            ResourceTab.AUDIO -> getString(R.string.main_save_audio)
-        }
-    }
-
-    private fun buildDownloadRequest(preview: PyResolveResult): DownloadRequest? {
-        if (preview.schemaVersion != 2) return null
-        val sourceUrl = preview.sourceUrl?.takeIf { it.isNotBlank() }
-            ?: currentPreviewInput.orEmpty()
-        val sourceId = preview.sourceId.orEmpty()
-        if (sourceUrl.isBlank() || sourceId.isBlank()) return null
-        val snapshotResources = preview.resources.asSequence()
-            .filter { it.id.isNotBlank() && it.mediaType in setOf("video", "image", "cover", "audio") }
-            .mapNotNull { resource ->
-                val downloadUrls = resource.downloadUrls
-                    .filter { it.startsWith("https://") }
-                    .distinct()
-                    .take(8)
-                if (downloadUrls.isEmpty()) return@mapNotNull null
-                DownloadSnapshotResource(
-                    id = resource.id,
-                    index = resource.index,
-                    type = resource.mediaType,
-                    title = resource.title,
-                    downloadUrls = downloadUrls,
-                    width = resource.width,
-                    height = resource.height,
-                    durationMs = resource.durationMs,
-                    formatHint = resource.formatHint,
-                    liveVideo = resource.liveVideo?.let { live ->
-                        DownloadSnapshotLiveVideo(
-                            available = live.available,
-                            downloadUrls = live.downloadUrls
-                                .filter { it.startsWith("https://") }
-                                .distinct()
-                                .take(8),
-                            width = live.width,
-                            height = live.height,
-                            durationMs = live.durationMs,
-                            formatHint = live.formatHint,
-                        )
-                    },
-                )
-            }
-            .take(100)
-            .toList()
-        return DownloadRequest(
-            source = DownloadSource(
-                platform = when (currentDownloadType) {
-                    DownloadType.DOU_YIN -> "douyin"
-                    DownloadType.XIAO_HONG_SHU -> "xiaohongshu"
-                    DownloadType.TWITTER -> "x"
-                },
-                url = sourceUrl,
-                id = sourceId,
-            ),
-            expectedWorkType = preview.mediaType.orEmpty(),
-            selection = DownloadSelection(
-                resourceType = selectedResourceTab.resourceType,
-                includeLiveVideo = binding.checkLiveVideo.visibility == View.VISIBLE &&
-                    binding.checkLiveVideo.isChecked,
-            ),
-            snapshot = if (
-                currentDownloadType == DownloadType.DOU_YIN && snapshotResources.isNotEmpty()
-            ) {
-                DownloadSnapshot(
-                    sourceId = sourceId,
-                    title = preview.title.orEmpty(),
-                    author = preview.author.orEmpty(),
-                    workType = preview.mediaType.orEmpty(),
-                    resources = snapshotResources,
-                )
-            } else {
-                null
-            },
-        )
-    }
-
-    private fun renderThumbnails(resources: List<ResolvedResource>, tab: ResourceTab) {
-        previewImages.clearThumbnails()
-        binding.thumbContainer.removeAllViews()
-        resources.forEachIndexed { index, resource ->
-            val thumb = FrameLayout(this).apply {
-                layoutParams = ViewGroup.MarginLayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(62),
-                ).also {
-                    if (index > 0) it.topMargin = dp(5)
-                }
-                setBackgroundResource(
-                    if (index == selectedPreviewIndex) R.drawable.bg_thumb_selected
-                    else R.drawable.bg_thumb
-                )
-                setOnClickListener {
-                    val changed = selectedPreviewIndex != index
-                    updatePreviewResource(index, resources, tab)
-                    if (changed) {
-                        UiMotion.performHaptic(this, UiMotion.Haptic.TICK)
-                    }
-                }
-            }
-            val imageView = ImageView(this).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            val fallback = TextView(this).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                gravity = Gravity.CENTER
-                textSize = 12f
-                setTextColor(Color.WHITE)
-                text = when (resource.mediaType) {
-                    "video" -> "▶"
-                    "cover" -> "封面"
-                    "audio" -> "音频"
-                    else -> (index + 1).toString()
-                }
-            }
-            thumb.addView(imageView)
-            thumb.addView(fallback)
-            binding.thumbContainer.addView(thumb)
-            val thumbUrl = thumbnailUrl(resource, currentPreview)
-            if (thumbUrl.isNotBlank()) {
-                previewImages.loadThumbnail(
-                    imageUrl = thumbUrl,
-                    imageView = imageView,
-                    fallback = fallback,
-                    headers = previewRequestHeaders(),
-                )
-            }
-        }
-    }
-
-    private fun updatePreviewResource(
-        index: Int,
-        resources: List<ResolvedResource>,
-        tab: ResourceTab,
-    ) {
-        val preview = currentPreview ?: return
-        val resource = resources.getOrNull(index) ?: return
-        selectedPreviewIndex = index
-        updateThumbnailSelection(index)
-        updatePreviewLabels(index, resources.size, tab)
-        if (tab == ResourceTab.VIDEO) {
-            playPreviewVideo(resource)
-        } else {
-            stopPreviewVideo()
-            loadPreviewImage(preview, resource, resources, index)
-        }
-    }
-
-    private fun setInputText(text: String) {
-        suppressInputChangeHandling = true
-        binding.etUrl.setText(text)
-        binding.etUrl.setSelection(binding.etUrl.text?.length ?: 0)
-        suppressInputChangeHandling = false
-    }
-
-    private fun formatMediaType(mediaType: String?): String = when (mediaType) {
-        "video" -> getString(R.string.main_media_type_video)
-        "gallery" -> getString(R.string.main_media_type_gallery)
-        "live_photo" -> getString(R.string.main_media_type_live_photo)
-        else -> getString(R.string.main_media_type_unknown)
-    }
-
-    private fun loadPreviewImage(
-        preview: PyResolveResult,
-        resource: ResolvedResource? = null,
-        resources: List<ResolvedResource> = emptyList(),
-        index: Int = 0,
-    ) {
-        val imageUrl = thumbnailUrl(resource, preview)
-        if (imageUrl.isBlank()) {
-            previewImages.hideForVideo()
-            return
-        }
-        val adjacentUrls = listOf(index - 1, index + 1)
-            .mapNotNull(resources::getOrNull)
-            .map { thumbnailUrl(it, preview) }
-            .filter { it.isNotBlank() && it != imageUrl }
-        previewImages.load(
-            imageUrl = imageUrl,
-            adjacentUrls = adjacentUrls,
-            headers = previewRequestHeaders(),
-        )
-    }
-
+    /** androidTest 直接驱动预览加载用。 */
     internal fun loadPreviewImageForTesting(imageUrl: String) {
-        binding.previewSection.visibility = View.VISIBLE
-        previewImages.load(
-            imageUrl = imageUrl,
-            adjacentUrls = emptyList(),
-            headers = emptyMap(),
-        )
+        previewSection.loadPreviewImageForTesting(imageUrl)
     }
-
-    private fun playPreviewVideo(resource: ResolvedResource) {
-        val videoUrl = resource.downloadUrls.firstOrNull().orEmpty()
-        previewImages.hideForVideo()
-        if (videoUrl.isBlank()) {
-            stopPreviewVideo()
-            binding.videoPreview.showUnavailable()
-            return
-        }
-        binding.videoPreview.visibility = View.VISIBLE
-        binding.videoPreview.setVideo(
-            uri = Uri.parse(videoUrl),
-            headers = previewRequestHeaders(),
-            autoPlay = true,
-        )
-    }
-
-    private fun stopPreviewVideo() {
-        binding.videoPreview.stopPlayback()
-        binding.videoPreview.clearVideoSize()
-        binding.videoPreview.visibility = View.GONE
-    }
-
-    private fun thumbnailUrl(resource: ResolvedResource?, preview: PyResolveResult?): String {
-        val direct = resource?.previewUrls?.firstOrNull().orEmpty()
-            .ifBlank { resource?.downloadUrls?.firstOrNull().orEmpty() }
-        if (resource?.mediaType == "image" || resource?.mediaType == "cover") return direct
-        return preview?.coverUrl.orEmpty().ifBlank {
-            preview?.resources
-                ?.firstOrNull { it.mediaType == "image" || it.mediaType == "cover" }
-                ?.downloadUrls
-                ?.firstOrNull()
-                .orEmpty()
-        }
-    }
-
-    private fun previewRequestHeaders(): Map<String, String> =
-        PreviewRequestPolicy.headersFor(currentDownloadType)
 
     private fun copyCurrentPreviewLink() {
-        val source = currentPreview?.sourceUrl?.takeIf { it.isNotBlank() }
-            ?: currentPreviewInput?.takeIf { it.isNotBlank() }
+        val source = previewSection.preview?.sourceUrl?.takeIf { it.isNotBlank() }
+            ?: previewSection.input?.takeIf { it.isNotBlank() }
             ?: return
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText(getString(R.string.app_name), source))
         toast(getString(R.string.main_toast_link_copied))
-    }
-
-    private fun saveCurrentPreview() {
-        val input = currentPreviewInput.orEmpty()
-        val preview = currentPreview
-        if (input.isBlank() || preview == null) return
-        hideSheets()
-        startDownload(input, preview, buildDownloadRequest(preview))
     }
 
     private fun setupMotion() {
@@ -864,9 +207,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         }
     }
 
-    private fun showMineSheet() {
+    fun showMineSheet() {
         refreshLoginUi()
-        refreshHistoryUi()
+        downloadFlow.refreshHistoryUi()
         refreshExceptionLogUi()
         mineSheetController.show()
     }
@@ -883,197 +226,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun showExceptionLogsDialog() {
-        val logs = ExceptionLogStore.getAll()
-        if (logs.isEmpty()) {
-            toast(getString(R.string.main_exception_log_empty))
-            refreshExceptionLogUi()
-            return
-        }
-        var selectedIndex = 0
-        val detail = TextView(this).apply {
-            setTextColor(getColor(R.color.dy_primary_light))
-            textSize = 12f
-            setPadding(12, 12, 12, 12)
-            text = ExceptionLogStore.formatForCopy(logs.first())
-        }
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        logs.forEachIndexed { index, log ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(12, 10, 12, 10)
-                setBackgroundResource(R.drawable.bg_section_download)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { setMargins(0, 0, 0, 8) }
-            }
-            val item = TextView(this).apply {
-                text = "${log.displayTime} · ${log.operation} · ${log.channel}\n${log.stage}\n${log.parseException.take(120)}"
-                setTextColor(getColor(R.color.dy_primary_light))
-                textSize = 13f
-                setOnClickListener {
-                    selectedIndex = index
-                    detail.text = ExceptionLogStore.formatForCopy(log)
-                }
-            }
-            val copy = TextView(this).apply {
-                text = "复制此条日志"
-                setTextColor(getColor(R.color.dy_primary_light))
-                textSize = 13f
-                setPadding(0, 10, 0, 0)
-                setOnClickListener {
-                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(
-                        android.content.ClipData.newPlainText(
-                            getString(R.string.main_exception_log_title),
-                            ExceptionLogStore.formatForCopy(log),
-                        )
-                    )
-                    toast(getString(R.string.main_exception_log_copied))
-                }
-            }
-            row.addView(item)
-            row.addView(copy)
-            list.addView(row)
-        }
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(18))
-            addView(View(this@MainActivity).apply {
-                setBackgroundResource(R.drawable.bg_sheet_grabber)
-                layoutParams = LinearLayout.LayoutParams(dp(42), dp(4)).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    bottomMargin = dp(14)
-                }
-            })
-            addView(TextView(this@MainActivity).apply {
-                text = getString(R.string.main_exception_log_dialog_title)
-                setTextColor(getColor(R.color.dy_primary))
-                textSize = 20f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            })
-            addView(TextView(this@MainActivity).apply {
-                text = "选择一条记录查看完整阶段信息，或直接复制该条日志"
-                setTextColor(getColor(R.color.dy_text_muted))
-                textSize = 12f
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { topMargin = dp(4); bottomMargin = dp(10) }
-            })
-            addView(ScrollView(this@MainActivity).apply {
-                addView(list)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (180 * resources.displayMetrics.density).toInt(),
-                )
-            })
-            addView(ScrollView(this@MainActivity).apply {
-                addView(detail)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (260 * resources.displayMetrics.density).toInt(),
-                )
-            })
-            addView(TextView(this@MainActivity).apply {
-                text = "复制内容已隐藏 Cookie、Token、签名参数和完整响应正文"
-                setTextColor(getColor(R.color.dy_text_muted))
-                textSize = 11f
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                ).apply { topMargin = dp(8) }
-            })
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(44),
-                ).apply { topMargin = dp(10) }
-                val close = DyActionButton(this@MainActivity).apply {
-                    text = getString(R.string.main_exception_log_close)
-                    setStyle(DyActionButton.Style.GHOST)
-                }
-                val copyCurrent = DyActionButton(this@MainActivity).apply {
-                    text = getString(R.string.main_exception_log_copy)
-                    setStyle(DyActionButton.Style.PRIMARY)
-                    setOnClickListener {
-                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(
-                            android.content.ClipData.newPlainText(
-                                getString(R.string.main_exception_log_title),
-                                ExceptionLogStore.formatForCopy(logs[selectedIndex]),
-                            )
-                        )
-                        toast(getString(R.string.main_exception_log_copied))
-                    }
-                }
-                addView(close, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
-                    marginEnd = dp(8)
-                })
-                addView(copyCurrent, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
-            })
-        }
-        val dialog = BottomSheetDialog(this)
-        (content.getChildAt(content.childCount - 1) as? LinearLayout)?.let { actions ->
-            actions.getChildAt(0).setOnClickListener { dialog.dismiss() }
-        }
-        dialog.setContentView(content)
-        dialog.show()
-    }
-
-    private fun recordResolveException(
-        inputText: String,
-        stage: String,
-        error: String?,
-        responseSummary: String,
-        retryInfo: String,
-        channelOverride: String? = null,
-        stageOverride: String? = null,
-        statusOverride: String = "失败",
-        operation: String = "解析",
-        diagnostics: PyDiagnosticsResponse? = null,
-    ) {
-        val now = System.currentTimeMillis()
-        val source = PlatformResolver.resolve(inputText)?.url ?: inputText
-        ExceptionLogStore.add(
-            ExceptionLogRecord(
-                id = now.toString(),
-                createdAt = now,
-                platform = currentTitle,
-                operation = operation,
-                channel = channelOverride?.takeIf { it.isNotBlank() }?.let { channel ->
-                    when (channel) {
-                        "cookie_fallback" -> "Cookie 兜底"
-                        "anonymous" -> "匿名解析"
-                        else -> channel
-                    }
-                } ?: if (StoreModule.loggedIn()) "匿名解析 / Cookie 兜底可用" else "匿名解析",
-                stage = stageOverride?.takeIf { it.isNotBlank() } ?: stage,
-                sourceUrl = ExceptionLogRecord.redactUrl(source),
-                status = statusOverride,
-                responseSummary = responseSummary.take(500),
-                parseException = (error ?: getString(R.string.main_error_unknown)).take(500),
-                retryInfo = retryInfo,
-                attempts = diagnostics?.stages.orEmpty().joinToString("；") { stage ->
-                    buildString {
-                        append(stage.name)
-                        append(":")
-                        append(stage.status)
-                        if (stage.errorType.orEmpty().isNotBlank()) append("/${stage.errorType}")
-                        if (stage.error.orEmpty().isNotBlank()) append("(${stage.error})")
-                    }
-                },
-                timings = diagnostics?.stages.orEmpty().joinToString(", ") { stage ->
-                    "${stage.name}=${stage.durationMs}ms"
-                },
-            )
-        )
-    }
-
-    private fun buildResolveResponseSummary(preview: PyResolveResult): String {
-        val timings = preview.timings.entries.joinToString(", ") { "${it.key}=${it.value}ms" }
-        return "ok=${preview.ok}; message=${preview.message}; resources=${preview.resources.size}; timings=$timings"
+        showExceptionLogSheet(this) { refreshExceptionLogUi() }
     }
 
     private fun refreshLoginUi() {
@@ -1089,7 +242,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         }
     }
 
-    private fun hideSheets() {
+    internal fun hideSheets() {
         mineSheetController.hide()
     }
 
@@ -1129,171 +282,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         binding.btnCloseMineSheet.setStyle(DyActionButton.Style.GHOST)
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-
-    private fun progressBubbleMinY(): Int = systemInsetTop
-
-    private fun progressBubbleMaxY(): Int {
-        val bottomBoundary = binding.bottomNav.top.takeIf { it > 0 }
-            ?: (binding.root.height - systemInsetBottom)
-        return (bottomBoundary - binding.progressBubble.height - dp(8))
-            .coerceAtLeast(progressBubbleMinY())
-    }
-
-    private fun preferredProgressBubbleSide(): ProgressBubbleDockSide =
-        if (binding.root.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
-            ProgressBubbleDockSide.LEFT
-        } else {
-            ProgressBubbleDockSide.RIGHT
-        }
-
-    private fun isAutomaticProgressExpansionSafe(
-        side: ProgressBubbleDockSide,
-        topMargin: Int,
-    ): Boolean {
-        if (side != preferredProgressBubbleSide() || binding.root.width <= 0) return false
-        val availableWidth = binding.root.width - systemInsetLeft - systemInsetRight - dp(16)
-        val expandedWidth = ProgressBubblePolicy.expandedWidth(
-            desiredWidth = dp(ProgressBubblePolicy.EXPANDED_WIDTH_DP),
-            availableWidth = availableWidth,
-        )
-        val bubbleLeft = if (side == ProgressBubbleDockSide.LEFT) {
-            systemInsetLeft + dp(8)
-        } else {
-            binding.root.width - systemInsetRight - dp(8) - expandedWidth
-        }
-        val bubbleRight = bubbleLeft + expandedWidth
-        val title = binding.tvAppTitle
-        val titleTextWidth = title.paint.measureText(title.text.toString())
-        val isRtl = title.layoutDirection == View.LAYOUT_DIRECTION_RTL
-        val titleTextLeft = if (isRtl) {
-            title.x + title.width - title.paddingRight - titleTextWidth
-        } else {
-            title.x + title.paddingLeft
-        }
-        val titleTextRight = titleTextLeft + titleTextWidth
-        val horizontalClear = if (side == ProgressBubbleDockSide.LEFT) {
-            bubbleRight + dp(12) <= titleTextLeft
-        } else {
-            bubbleLeft >= titleTextRight + dp(12)
-        }
-        val bubbleHeight = binding.progressBubble.height.takeIf { it > 0 }
-            ?: dp(ProgressBubblePolicy.HEIGHT_DP)
-        val visibleBubbleBottom = topMargin + bubbleHeight - dp(2)
-        val downloadSectionTop = (binding.contentPanel.y + binding.downloadSection.y).roundToInt()
-        return horizontalClear && visibleBubbleBottom <= downloadSectionTop
-    }
-
-    private fun cancelProgressBubbleHide() {
-        progressHideJob?.cancel()
-        progressHideJob = null
-    }
-
-    private fun scheduleProgressBubbleHide(delayMs: Long) {
-        cancelProgressBubbleHide()
-        progressHideJob = lifecycleScope.launch {
-            delay(delayMs)
-            binding.progressBubble.hide()
-            progressHideJob = null
-        }
-    }
-
-    private fun updateProgressBubble(
-        percent: Int,
-        downloadedBytes: Long,
-        totalBytes: Long,
-        speedBytesPerSecond: Long,
-    ) {
-        val downloadedText = formatBytes(downloadedBytes)
-        val sizeText = if (totalBytes > EMPTY_BYTE_COUNT) {
-            getString(R.string.main_progress_size_format, downloadedText, formatBytes(totalBytes))
-        } else {
-            getString(R.string.main_progress_size_unknown)
-        }
-        val speedText = if (speedBytesPerSecond > EMPTY_BYTE_COUNT) {
-            getString(R.string.main_progress_speed_format, formatBytes(speedBytesPerSecond))
-        } else {
-            getString(R.string.main_progress_speed_unknown)
-        }
-        val detailText = "$sizeText · $speedText"
-        cancelProgressBubbleHide()
-        if (totalBytes > EMPTY_BYTE_COUNT) {
-            binding.progressBubble.showProgress(
-                value = percent,
-                primaryText = getString(R.string.main_status_downloading),
-                detailText = detailText,
-            )
-        } else {
-            binding.progressBubble.showDownloading(
-                primaryText = getString(R.string.main_status_downloading),
-                detailText = detailText,
-            )
-        }
-    }
-
-    private fun updateThumbnailSelection(index: Int) {
-        for (childIndex in 0 until binding.thumbContainer.childCount) {
-            binding.thumbContainer.getChildAt(childIndex).setBackgroundResource(
-                if (childIndex == index) R.drawable.bg_thumb_selected else R.drawable.bg_thumb
-            )
-        }
-        binding.thumbScroll.post {
-            val selected = binding.thumbContainer.getChildAt(index) ?: return@post
-            val targetY = (selected.top - (binding.thumbScroll.height - selected.height) / 2)
-                .coerceAtLeast(0)
-            binding.thumbScroll.smoothScrollTo(0, targetY)
-        }
-    }
-
-    private fun setupProgressBubble() {
-        binding.progressBubble.setOnClickListener {
-            if (binding.progressBubble.shouldOpenHistoryOnClick) {
-                showMineSheet()
-            } else {
-                binding.progressBubble.toggleDetails()
-            }
-        }
-        UiMotion.bindEdgeSnap(
-            view = binding.progressBubble,
-            boundsProvider = {
-                val bubble = binding.progressBubble
-                val minX = systemInsetLeft + dp(8).toFloat()
-                val maxX = (
-                    binding.root.width - systemInsetRight - bubble.compactInteractionWidth - dp(8)
-                    )
-                    .coerceAtLeast(minX.toInt()).toFloat()
-                RectF(
-                    minX,
-                    progressBubbleMinY().toFloat(),
-                    maxX,
-                    progressBubbleMaxY().toFloat(),
-                )
-            },
-            onDragStarted = {
-                progressBubblePositioned = true
-                binding.progressBubble.beginDragFeedback()
-            },
-            onEdgeSettled = { edge ->
-                progressBubbleDockSide = if (edge == UiMotion.HorizontalEdge.LEFT) {
-                    ProgressBubbleDockSide.LEFT
-                } else {
-                    ProgressBubbleDockSide.RIGHT
-                }
-                val topMargin = binding.progressBubble.y.roundToInt()
-                    .coerceIn(progressBubbleMinY(), progressBubbleMaxY())
-                binding.progressBubble.setAutomaticExpansionEnabled(
-                    isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
-                )
-                binding.progressBubble.positionAtDock(
-                    side = progressBubbleDockSide,
-                    leftMargin = systemInsetLeft + dp(8),
-                    rightMargin = systemInsetRight + dp(8),
-                    topMargin = topMargin,
-                    withImpact = true,
-                )
-            },
-        )
-    }
+    internal fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     override fun applySystemBarInsets(view: View) {
         ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
@@ -1302,6 +291,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             systemInsetBottom = systemBars.bottom
             systemInsetLeft = systemBars.left
             systemInsetRight = systemBars.right
+            bubble.updateInsets(systemBars.top, systemBars.bottom, systemBars.left, systemBars.right)
 
             binding.tvAppTitle.layoutParams = binding.tvAppTitle.layoutParams.apply {
                 height = dp(APP_HEADER_HEIGHT_DP) + systemBars.top
@@ -1327,29 +317,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
                 dp(8) + systemBars.right,
                 dp(4) + systemBars.bottom,
             )
-            binding.root.post {
-                val bubble = binding.progressBubble
-                bubble.setAvailableHorizontalSpace(
-                    binding.root.width - systemInsetLeft - systemInsetRight - dp(16)
-                )
-                val topMargin = if (progressBubblePositioned) {
-                    bubble.y.roundToInt().coerceIn(progressBubbleMinY(), progressBubbleMaxY())
-                } else {
-                    progressBubbleDockSide = preferredProgressBubbleSide()
-                    progressBubbleMinY()
-                }
-                bubble.setAutomaticExpansionEnabled(
-                    isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
-                )
-                bubble.positionAtDock(
-                    side = progressBubbleDockSide,
-                    leftMargin = systemInsetLeft + dp(8),
-                    rightMargin = systemInsetRight + dp(8),
-                    topMargin = topMargin,
-                    withImpact = false,
-                )
-                progressBubblePositioned = true
-            }
+            bubble.onInsetsChanged()
             insets
         }
         ViewCompat.requestApplyInsets(view)
@@ -1362,111 +330,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private fun clearLinkAndCancelDownload() {
         binding.etUrl.text?.clear()
-        clearPreview()
+        previewSection.clear()
         toast(getString(R.string.main_status_link_cleared))
     }
 
-    private fun saveDownloadHistory(
-        sourceUrl: String,
-        title: String,
-        mediaType: String,
-        status: String,
-        savedUris: List<Uri>,
-        errorMessage: String?,
-        createdAt: Long,
-    ) {
-        DownloadHistoryStore.add(
-            DownloadHistoryRecord(
-                downloadId = createdAt.toString(),
-                sourceUrl = sourceUrl,
-                title = title,
-                mediaType = mediaType,
-                status = status,
-                savedPath = savedUris.firstOrNull()?.toString().orEmpty(),
-                savedUris = savedUris,
-                errorMessage = errorMessage,
-                createdAt = createdAt,
-                finishedAt = System.currentTimeMillis(),
-            )
-        )
-    }
-
-    private fun refreshHistoryUi() {
-        val latest = DownloadHistoryStore.latest()
-        binding.historySection.visibility = if (latest == null) View.GONE else View.VISIBLE
-        if (latest == null) return
-
-        binding.tvHistoryInfo.text = if (latest.isSuccess) {
-            getString(
-                R.string.main_history_success_format,
-                latest.title,
-                latest.sourceUrl,
-                latest.savedUris.size,
-            )
-        } else {
-            getString(
-                R.string.main_history_failed_format,
-                latest.title,
-                latest.sourceUrl,
-                latest.errorMessage ?: getString(R.string.main_error_unknown),
-            )
-        }
-        val hasFiles = latest.savedUris.isNotEmpty()
-        binding.btnHistoryOpen.isEnabled = hasFiles
-        binding.btnHistoryShare.isEnabled = hasFiles
-        binding.btnHistoryRetry.isEnabled = latest.sourceUrl.isNotBlank() && !isDownloading
-    }
-
-    private fun openLatestHistoryFile() {
-        val uri = DownloadHistoryStore.latest()?.savedUris?.firstOrNull()
-        if (uri == null) {
-            toast(getString(R.string.main_toast_no_file_to_open))
-            return
-        }
-        val mimeType = contentResolver.getType(uri) ?: "*/*"
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, mimeType)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        try {
-            startActivity(intent)
-        } catch (_: ActivityNotFoundException) {
-            toast(getString(R.string.main_toast_no_app_for_file))
-        }
-    }
-
-    private fun shareLatestHistoryFile() {
-        val uris = DownloadHistoryStore.latest()?.savedUris.orEmpty()
-        if (uris.isEmpty()) {
-            toast(getString(R.string.main_toast_no_file_to_open))
-            return
-        }
-        val intent = if (uris.size == 1) {
-            Intent(Intent.ACTION_SEND).apply {
-                type = contentResolver.getType(uris.first()) ?: "*/*"
-                putExtra(Intent.EXTRA_STREAM, uris.first())
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        } else {
-            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "*/*"
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        }
-        try {
-            startActivity(Intent.createChooser(intent, getString(R.string.main_history_share)))
-        } catch (_: ActivityNotFoundException) {
-            toast(getString(R.string.main_toast_no_app_for_file))
-        }
-    }
-
-    private fun retryLatestHistory() {
-        val sourceUrl = DownloadHistoryStore.latest()?.sourceUrl?.takeIf { it.isNotBlank() }
-            ?: return
-        setInputText(sourceUrl)
-        clearPreview()
-        resolveAndRenderPreview(sourceUrl)
+    internal fun setInputText(text: String) {
+        suppressInputChangeHandling = true
+        binding.etUrl.setText(text)
+        binding.etUrl.setSelection(binding.etUrl.text?.length ?: 0)
+        suppressInputChangeHandling = false
     }
 
     private fun readSharedText(intent: Intent?) {
@@ -1475,13 +347,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             val result = PlatformResolver.resolve(sharedText)
             val inputText = result?.normalizedInput ?: sharedText
             setInputText(inputText)
-            clearPreview()
+            previewSection.clear()
             if (result == null) toast(getString(R.string.main_toast_supported_platforms_only))
         }
     }
 
     private fun scheduleClipboardCheck() {
-        if (isDownloading) return
+        if (downloadFlow.isDownloading) return
         lifecycleScope.launch {
             delay(CLIPBOARD_CHECK_DELAY_MS)
             checkClipboardForSupportedLink()
@@ -1489,7 +361,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun checkClipboardForSupportedLink() {
-        if (isDownloading) return
+        if (downloadFlow.isDownloading) return
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         if (!clipboard.hasPrimaryClip()) return
         val description = clipboard.primaryClipDescription ?: return
@@ -1516,25 +388,20 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             DownloadType.TWITTER -> getString(R.string.main_input_title_format, getString(R.string.name_x))
         }
         binding.etUrl.hint = getString(R.string.main_share_input_hint)
-        binding.root.post {
-            val topMargin = binding.progressBubble.y.roundToInt()
-                .coerceIn(progressBubbleMinY(), progressBubbleMaxY())
-            binding.progressBubble.setAutomaticExpansionEnabled(
-                isAutomaticProgressExpansionSafe(progressBubbleDockSide, topMargin)
-            )
-        }
+        bubble.refreshAutoExpansion()
     }
 
-    private fun setUiEnabled(enabled: Boolean) {
+    internal fun setUiEnabled(enabled: Boolean) {
         binding.etUrl.isEnabled = enabled
         binding.btnDownload.isEnabled = enabled
+        // 清除按钮保持常可用：下载/解析进行中也允许清空输入放弃当前任务。
         binding.btnClear.isEnabled = true
     }
 
-    private fun showDownloadFailure(message: String?) {
+    internal fun showDownloadFailure(message: String?) {
         val detail = message?.takeIf { it.isNotBlank() }
             ?: getString(R.string.main_error_unknown)
-        binding.progressBubble.showError(
+        bubble.showError(
             primaryText = getString(R.string.main_progress_error),
             detailText = getString(R.string.main_progress_error_detail),
             accessibilityDetail = detail,
@@ -1542,67 +409,26 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
         showError(detail)
     }
 
-    private fun showError(message: String?) {
+    internal fun showError(message: String?) {
         if (message.isNullOrEmpty()) return
         UiMotion.reject(binding.downloadSection)
         UiMotion.performHaptic(binding.downloadSection, UiMotion.Haptic.REJECT)
         toast(message)
     }
 
-    private fun showUnsupportedLink() {
-        clearPreview()
+    internal fun showUnsupportedLink() {
+        previewSection.clear()
         showError(getString(R.string.main_toast_supported_platforms_only))
     }
 
-    private fun createDownloadProgressListener(): DownloadProgressListener =
-        object : DownloadProgressListener {
-            override fun onProgress(
-                percent: Int,
-                downloadedBytes: Long,
-                totalBytes: Long,
-                speedBytesPerSecond: Long,
-            ) {
-                if (!shouldDispatchProgressUpdate(downloadedBytes, totalBytes)) return
-
-                lifecycleScope.launch(Dispatchers.Main) {
-                    updateProgressBubble(
-                        percent.coerceIn(PROGRESS_INIT, PROGRESS_COMPLETE),
-                        downloadedBytes,
-                        totalBytes,
-                        speedBytesPerSecond,
-                    )
-                }
-            }
-
-            private fun shouldDispatchProgressUpdate(
-                downloadedBytes: Long, totalBytes: Long
-            ): Boolean {
-                val now = SystemClock.elapsedRealtime()
-                val isComplete = totalBytes > EMPTY_BYTE_COUNT && downloadedBytes >= totalBytes
-
-                while (true) {
-                    val lastUpdatedAt = lastProgressUiUpdatedAt.get()
-                    val interval = now - lastUpdatedAt
-                    if (!isComplete && lastUpdatedAt > 0L && interval < PROGRESS_UI_UPDATE_INTERVAL_MS) {
-                        return false
-                    }
-                    if (lastProgressUiUpdatedAt.compareAndSet(lastUpdatedAt, now)) {
-                        return true
-                    }
-                }
-            }
-        }
+    internal fun refreshActionButton() {
+        binding.btnDownload.text = getString(R.string.main_button_download)
+    }
 
     private companion object {
-        const val PROGRESS_INIT = 0
-        const val PROGRESS_COMPLETE = 100
-        const val PROGRESS_RECORD_INIT_TIME = 0L
         const val CLIPBOARD_CHECK_DELAY_MS = 500L
-        const val PROGRESS_UI_UPDATE_INTERVAL_MS = 200L
-        const val EMPTY_BYTE_COUNT = 0L
         const val APP_HEADER_HEIGHT_DP = 48
         const val BOTTOM_NAV_HEIGHT_DP = 58
         const val CONTENT_BOTTOM_NAV_SPACE_DP = 64
     }
-
 }

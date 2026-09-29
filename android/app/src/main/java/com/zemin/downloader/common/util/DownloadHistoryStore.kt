@@ -1,53 +1,16 @@
 package com.zemin.downloader.common.util
 
-import android.content.SharedPreferences
 import android.net.Uri
-import android.preference.PreferenceManager
-import androidx.core.content.edit
-import com.zemin.downloader.appContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-object DownloadHistoryStore {
-    private const val KEY_HISTORY = "douyin_download_history"
-    private const val MAX_HISTORY_SIZE = 20
+object DownloadHistoryStore : JsonListStore<DownloadHistoryRecord>(
+    prefsKey = "douyin_download_history",
+    maxSize = 20,
+) {
+    override fun idOf(record: DownloadHistoryRecord): String = record.downloadId
 
-    private val prefs: SharedPreferences by lazy {
-        PreferenceManager.getDefaultSharedPreferences(appContext)
-    }
-
-    fun add(record: DownloadHistoryRecord) {
-        val records = listOf(record) + getAll().filterNot { it.downloadId == record.downloadId }
-        save(records.take(MAX_HISTORY_SIZE))
-    }
-
-    fun getAll(): List<DownloadHistoryRecord> {
-        val raw = prefs.getString(KEY_HISTORY, null).orEmpty()
-        if (raw.isBlank()) return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            buildList {
-                for (index in 0 until array.length()) {
-                    val item = array.optJSONObject(index) ?: continue
-                    add(item.toRecord())
-                }
-            }
-        }.getOrDefault(emptyList())
-    }
-
-    fun latest(): DownloadHistoryRecord? = getAll().firstOrNull()
-
-    fun clear() {
-        prefs.edit { remove(KEY_HISTORY) }
-    }
-
-    private fun save(records: List<DownloadHistoryRecord>) {
-        val array = JSONArray()
-        records.forEach { array.put(it.toJson()) }
-        prefs.edit { putString(KEY_HISTORY, array.toString()) }
-    }
-
-    private fun DownloadHistoryRecord.toJson(): JSONObject {
+    override fun DownloadHistoryRecord.toJson(): JSONObject {
         return JSONObject().apply {
             put("downloadId", downloadId)
             put("sourceUrl", sourceUrl)
@@ -62,7 +25,7 @@ object DownloadHistoryStore {
         }
     }
 
-    private fun JSONObject.toRecord(): DownloadHistoryRecord {
+    override fun JSONObject.toRecord(): DownloadHistoryRecord? {
         val uriArray = optJSONArray("savedUris") ?: JSONArray()
         val uris = buildList {
             for (index in 0 until uriArray.length()) {
@@ -83,6 +46,8 @@ object DownloadHistoryStore {
             finishedAt = optLong("finishedAt"),
         )
     }
+
+    fun latest(): DownloadHistoryRecord? = getAll().firstOrNull()
 }
 
 data class DownloadHistoryRecord(

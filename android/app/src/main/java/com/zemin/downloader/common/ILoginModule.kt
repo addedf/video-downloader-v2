@@ -3,11 +3,6 @@ package com.zemin.downloader.common
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 
-/**
- * @author maozemin@coocaa.com
- * @desc:
- */
-
 interface ILoginModule : IBaseBusinessModule {
     val needLogin: Boolean
 

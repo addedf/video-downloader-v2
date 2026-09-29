@@ -91,6 +91,9 @@
     <string name="main_exception_log_empty">暂无解析异常记录</string>
     <string name="main_exception_log_count_format">最近 %1$d 条解析异常，可复制给开发者调试</string>
     <string name="main_exception_log_dialog_title">解析异常日志</string>
+    <string name="main_exception_log_dialog_hint">选择一条记录查看完整阶段信息，或直接复制该条日志</string>
+    <string name="main_exception_log_copy_one">复制此条日志</string>
+    <string name="main_exception_log_redaction_note">复制内容已隐藏 Cookie、Token、签名参数和完整响应正文</string>
     <string name="main_exception_log_copy">复制当前日志</string>
     <string name="main_exception_log_close">关闭</string>
     <string name="main_exception_log_copied">已复制脱敏异常日志</string>
@@ -98,6 +101,7 @@
     <string name="main_toast_link_copied">已复制链接</string>
     <string name="main_preview_resource_video">视频</string>
     <string name="main_preview_resource_cover">封面</string>
+    <string name="main_preview_resource_audio">音频</string>
     <string name="main_preview_resource_image_format">图片 %1$d</string>
     <string name="main_preview_resource_more_format">等 %1$d 个资源</string>
     <string name="main_media_type_video">视频</string>

@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import android.preference.PreferenceManager
 import androidx.core.content.edit
 import com.zemin.downloader.appContext
+import com.zemin.downloader.impl.BridgeAbilityConfig
 import com.zemin.downloader.impl.DownloadType
 
 object LocalStorage {
@@ -20,12 +21,8 @@ object LocalStorage {
     }
 
     fun getAbility(): DownloadType {
-        val storedType = DownloadType.fromType(prefs.getString(KEY_ABILITY, null))
-        return if (storedType in com.zemin.downloader.impl.BridgeAbilityConfig.getAllAbility()) {
-            storedType
-        } else {
-            com.zemin.downloader.impl.BridgeAbilityConfig.getDefaultDownloadType()
-        }
+        // fromType 对未知值已回落默认平台，不需要再叠一层白名单校验。
+        return DownloadType.fromType(prefs.getString(KEY_ABILITY, null))
     }
 
     fun saveCookies(key: String, cookieString: String) {

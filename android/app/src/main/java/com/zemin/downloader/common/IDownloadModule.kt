@@ -5,10 +5,6 @@ import com.chaquo.python.Python
 import com.zemin.downloader.common.bean.DownloadRequest
 import com.zemin.downloader.common.util.MediaStorageManager
 
-/**
- * @author maozemin@coocaa.com
- * @desc: 通用下载桥接接口
- */
 interface IDownloadModule : IBaseBusinessModule {
     val python: Python
 

@@ -19,10 +19,13 @@ data class DownloadSource(
     val id: String,
 )
 
+/**
+ * 用户的保存选择。Kotlin 侧 UI 目前只支持整类选择，不发 resource_ids；
+ * Python 端按缺省处理（取该类全部资源），字段保留在协议文档里供未来多选用。
+ */
 @JsonClass(generateAdapter = false)
 data class DownloadSelection(
     @Json(name = "resource_type") val resourceType: String,
-    @Json(name = "resource_ids") val resourceIds: List<String> = emptyList(),
     @Json(name = "include_live_video") val includeLiveVideo: Boolean = false,
 )
 
