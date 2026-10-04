@@ -1,5 +1,7 @@
 # X (Twitter) 视频/图片识别下载功能策划案
 
+> **2026-10-04 实施更新**：下文保留最初策划，不代表当前实现。当前已接入公开单帖 guest → FxTwitter v2 及博主主页媒体分页、预览选择和下载。实际方案、验收证据与边界见 [X_ACCEPTANCE_2026-10-04.md](X_ACCEPTANCE_2026-10-04.md)。未接入 XApis vendor、X Cookie 登录或 MP3。
+
 > 2026-09-28 立项策划。目标：让 APP 像识别抖音一样自动识别 X 链接，解析视频/图片并下载，体验对标 [savetwitter.net](https://savetwitter.net/zh-cn3)，解析引擎引入 [XApis](https://github.com/cv-cat/XApis)（纯 Python，契合现有 Chaquopy 架构）。
 
 ## 1. 目标与定位
