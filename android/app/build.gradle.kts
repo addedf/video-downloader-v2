@@ -16,8 +16,8 @@ android {
         applicationId = "com.ricardo.videodownloader.v2"
         minSdk = 28
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.4.3"
+        versionCode = 16
+        versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
