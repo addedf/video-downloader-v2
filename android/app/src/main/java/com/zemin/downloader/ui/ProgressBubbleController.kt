@@ -180,6 +180,7 @@ class ProgressBubbleController(
                 dockSide = preferredSide()
                 minY()
             }
+            ui.progressBubble.setAutomaticExpansionEnabled(isAutomaticExpansionSafe(dockSide, topMargin))
             positionAtDock(topMargin, withImpact = false)
             positioned = true
         }
@@ -243,36 +244,11 @@ class ProgressBubbleController(
         topMargin: Int,
     ): Boolean {
         if (side != preferredSide() || ui.root.width <= 0) return false
-        val availableWidth = ui.root.width - insetLeft - insetRight - host.dp(16)
-        val expandedWidth = ProgressBubblePolicy.expandedWidth(
-            desiredWidth = host.dp(ProgressBubblePolicy.EXPANDED_WIDTH_DP),
-            availableWidth = availableWidth,
-        )
-        val bubbleLeft = if (side == ProgressBubbleDockSide.LEFT) {
-            insetLeft + host.dp(8)
-        } else {
-            ui.root.width - insetRight - host.dp(8) - expandedWidth
-        }
-        val bubbleRight = bubbleLeft + expandedWidth
-        val title = ui.tvAppTitle
-        val titleTextWidth = title.paint.measureText(title.text.toString())
-        val isRtl = title.layoutDirection == View.LAYOUT_DIRECTION_RTL
-        val titleTextLeft = if (isRtl) {
-            title.x + title.width - title.paddingRight - titleTextWidth
-        } else {
-            title.x + title.paddingLeft
-        }
-        val titleTextRight = titleTextLeft + titleTextWidth
-        val horizontalClear = if (side == ProgressBubbleDockSide.LEFT) {
-            bubbleRight + host.dp(12) <= titleTextLeft
-        } else {
-            bubbleLeft >= titleTextRight + host.dp(12)
-        }
         val bubbleHeight = ui.progressBubble.height.takeIf { it > 0 }
             ?: host.dp(ProgressBubblePolicy.HEIGHT_DP)
         val visibleBubbleBottom = topMargin + bubbleHeight - host.dp(2)
         val downloadSectionTop = (ui.contentPanel.y + ui.downloadSection.y).roundToInt()
-        return horizontalClear && visibleBubbleBottom <= downloadSectionTop
+        return visibleBubbleBottom <= downloadSectionTop
     }
 
     private companion object {

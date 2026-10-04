@@ -7,12 +7,10 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import android.widget.ImageView
-import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.zemin.downloader.ui.MainActivity
 import com.zemin.downloader.ui.view.DownloadProgressBubbleView
-import com.zemin.downloader.ui.view.ProgressBubblePolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -59,38 +57,44 @@ class MotionInstrumentedTest {
     }
 
     @Test
-    fun progressBubbleStaysInSafeLaneAndDragDisablesUnsafeAutoExpansion() {
+    fun progressBubbleDefaultsToCompactAndManualDetailsCollapseAfterDragging() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         clearClipboard(instrumentation.targetContext)
         val activity = startMainActivity(instrumentation)
         val bubble = activity.findViewById<DownloadProgressBubbleView>(R.id.progressBubble)
+        instrumentation.waitForIdleSync()
 
         instrumentation.runOnMainSync {
             bubble.showResolving("解析中", "正在获取作品信息")
         }
-        assertTrue(waitUntil { bubble.visibility == View.VISIBLE && bubble.width > bubble.compactInteractionWidth })
+        assertTrue(waitUntil { bubble.visibility == View.VISIBLE && bubble.width == bubble.compactInteractionWidth })
         assertEquals("解析中，正在获取作品信息", bubble.contentDescription)
+
+        instrumentation.runOnMainSync { bubble.toggleDetails() }
+        assertTrue(waitUntil { bubble.isExpandedForTest && bubble.width > bubble.compactInteractionWidth })
+        assertEquals("解析中，正在获取作品信息", bubble.contentDescription)
+
+        instrumentation.runOnMainSync { bubble.toggleDetails() }
+        assertTrue(waitUntil { !bubble.isExpandedForTest && bubble.width == bubble.compactInteractionWidth })
 
         instrumentation.runOnMainSync {
             bubble.showFinalizing("正在保存", "正在写入系统相册")
         }
         assertEquals("正在保存，正在写入系统相册", bubble.contentDescription)
+        assertTrue(waitUntil { bubble.width == bubble.compactInteractionWidth })
         instrumentation.runOnMainSync {
             bubble.showSuccess("保存完成", "文件已保存到系统相册")
         }
+        assertTrue(waitUntil { bubble.visibility == View.VISIBLE && bubble.width == bubble.compactInteractionWidth })
+        assertEquals("保存完成，文件已保存到系统相册", bubble.contentDescription)
         val density = activity.resources.displayMetrics.density
-        val successWidth = (ProgressBubblePolicy.SUCCESS_EXPANDED_WIDTH_DP * density).toInt()
-        assertTrue(waitUntil { bubble.visibility == View.VISIBLE && bubble.width == successWidth })
-        val bubbleLocation = IntArray(2).also(bubble::getLocationOnScreen)
-        val sectionLocation = IntArray(2).also(
-            activity.findViewById<View>(R.id.downloadSection)::getLocationOnScreen
-        )
-        assertTrue(bubbleLocation[1] + bubble.height - 2f * density <= sectionLocation[1])
-        val appTitle = activity.findViewById<TextView>(R.id.tvAppTitle)
-        val titleLocation = IntArray(2).also(appTitle::getLocationOnScreen)
-        val titleTextRight = titleLocation[0] + appTitle.paddingLeft +
-            appTitle.paint.measureText(appTitle.text.toString())
-        assertTrue(bubbleLocation[0] >= titleTextRight + 12f * density)
+
+        instrumentation.runOnMainSync {
+            bubble.showProgress(35, "正在下载", "7 MB / 20 MB · 3.2 MB/s")
+            bubble.toggleDetails()
+        }
+        assertTrue(waitUntil { bubble.isExpandedForTest && bubble.width > bubble.compactInteractionWidth })
+        assertEquals("正在下载，35%，7 MB / 20 MB · 3.2 MB/s", bubble.contentDescription)
 
         dragToLeftEdge(instrumentation, bubble, density)
         assertTrue(
@@ -108,6 +112,7 @@ class MotionInstrumentedTest {
         assertTrue(waitUntil { bubble.visibility == View.GONE })
         assertEquals(dockedX, bubble.x, positionTolerancePx)
         assertEquals(dockedY, bubble.y, positionTolerancePx)
+        assertEquals("正在下载，35%，7 MB / 20 MB · 3.2 MB/s", bubble.contentDescription)
 
         instrumentation.runOnMainSync {
             bubble.showProgress(35, "正在下载", "7 MB / 20 MB · 3.2 MB/s")
