@@ -9,9 +9,11 @@ import android.os.SystemClock
 import android.util.Base64
 import android.view.View
 import android.widget.ImageView
+import androidx.lifecycle.lifecycleScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.zemin.downloader.ui.MainActivity
+import com.zemin.downloader.ui.preview.PreviewImageController
 import com.zemin.downloader.ui.view.DyPreviewCardView
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertEquals
@@ -23,6 +25,57 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PreviewImageInstrumentedTest {
+    @Test
+    fun liveAmbientKeepsStillForegroundHiddenAndAllowsImageFallback() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        clearClipboard(instrumentation.targetContext)
+        val activity = startMainActivity(instrumentation)
+        val previewCard = activity.findViewById<DyPreviewCardView>(R.id.previewCard)
+        val ambient = activity.findViewById<ImageView>(R.id.ivPreviewAmbient)
+        val scrim = activity.findViewById<View>(R.id.previewAmbientScrim)
+        val foreground = activity.findViewById<ImageView>(R.id.ivPreviewCover)
+        val incoming = activity.findViewById<ImageView>(R.id.ivPreviewCoverIncoming)
+        lateinit var controller: PreviewImageController
+        instrumentation.runOnMainSync {
+            activity.findViewById<View>(R.id.previewSection).visibility = View.VISIBLE
+            controller = PreviewImageController(
+                activity, activity, activity.lifecycleScope, previewCard,
+                ambient, scrim, foreground, incoming,
+            )
+        }
+        assertTrue(waitUntil { previewCard.width > 0 && previewCard.height > 0 })
+
+        instrumentation.runOnMainSync {
+            controller.loadAmbient(dataImageUrl(Color.BLUE), emptyList(), emptyMap())
+        }
+        assertTrue(waitUntil { ambient.drawable != null })
+        assertEquals(View.VISIBLE, ambient.visibility)
+        assertEquals(View.VISIBLE, scrim.visibility)
+        assertEquals(View.GONE, foreground.visibility)
+        assertEquals(View.GONE, incoming.visibility)
+
+        instrumentation.runOnMainSync {
+            controller.load(dataImageUrl(Color.GREEN), emptyList(), emptyMap())
+        }
+        assertTrue(waitUntil { foreground.drawable != null && incoming.visibility == View.GONE })
+        assertEquals(View.VISIBLE, foreground.visibility)
+        assertEquals(View.VISIBLE, ambient.visibility)
+
+        instrumentation.runOnMainSync {
+            controller.loadAmbient(dataImageUrl(Color.RED), emptyList(), emptyMap())
+            controller.hideForVideo()
+        }
+        instrumentation.waitForIdleSync()
+        assertEquals(View.GONE, ambient.visibility)
+        assertEquals(View.GONE, scrim.visibility)
+        assertEquals(View.GONE, foreground.visibility)
+        assertEquals(View.GONE, incoming.visibility)
+        instrumentation.runOnMainSync {
+            controller.dispose()
+            activity.finish()
+        }
+    }
+
     @Test
     fun outgoingImageRemainsUntilTheNextImageIsReady() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

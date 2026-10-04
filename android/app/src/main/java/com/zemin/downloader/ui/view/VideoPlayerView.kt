@@ -1,6 +1,7 @@
 package com.zemin.downloader.ui.view
 
 import android.content.Context
+import android.graphics.Color
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Handler
@@ -51,6 +52,9 @@ class VideoPlayerView @JvmOverloads constructor(
     private var muted = false
     private var autoPlay = true
     private var playbackErrorListener: (() -> Unit)? = null
+    private var useAmbientBackground = false
+    private var bottomOverlayInset = 0
+    private val controlsBottomPadding: Int
     private val playbackGate = VideoPlaybackGate()
 
     private var fullscreenActivity: ComponentActivity? = null
@@ -75,6 +79,7 @@ class VideoPlayerView @JvmOverloads constructor(
         LayoutInflater.from(context).inflate(R.layout.view_video_player, this, true)
         videoSurface = findViewById(R.id.playerSurface)
         controlsOverlay = findViewById(R.id.playerControls)
+        controlsBottomPadding = controlsOverlay.paddingBottom
         loadingIndicator = findViewById(R.id.playerLoading)
         statusText = findViewById(R.id.playerStatus)
         centerControls = findViewById(R.id.playerCenterControls)
@@ -121,13 +126,21 @@ class VideoPlayerView @JvmOverloads constructor(
         }
     }
 
+    fun setBottomOverlayInset(bottomPx: Int) {
+        bottomOverlayInset = bottomPx.coerceAtLeast(0)
+        updateControlsPadding()
+    }
+
     fun setVideo(
         uri: Uri,
         headers: Map<String, String> = emptyMap(),
         autoPlay: Boolean = true,
+        useAmbientBackground: Boolean = false,
         onError: (() -> Unit)? = null,
     ) {
         stopPlayback()
+        this.useAmbientBackground = useAmbientBackground
+        updateCanvasBackground()
         this.autoPlay = autoPlay
         playbackGate.activateSource(autoPlay)
         playbackErrorListener = onError
@@ -163,6 +176,8 @@ class VideoPlayerView @JvmOverloads constructor(
         playbackGate.clearSource()
         autoPlay = false
         playbackErrorListener = null
+        useAmbientBackground = false
+        updateCanvasBackground()
         handler.removeCallbacksAndMessages(null)
         runCatching { videoSurface.pause() }
         runCatching { videoSurface.stopPlayback() }
@@ -174,6 +189,8 @@ class VideoPlayerView @JvmOverloads constructor(
     fun clearVideoSize() = videoSurface.clearVideoSize()
 
     fun showUnavailable() {
+        useAmbientBackground = false
+        updateCanvasBackground()
         resetPlaybackState()
         visibility = View.VISIBLE
         loadingIndicator.visibility = View.GONE
@@ -199,6 +216,8 @@ class VideoPlayerView @JvmOverloads constructor(
         originalLayoutParams = null
         originalIndex = -1
         isFullscreen = false
+        updateCanvasBackground()
+        updateControlsPadding()
         fullscreenBackCallback?.isEnabled = false
         elevation = 0f
         updateFullscreenIcon()
@@ -355,6 +374,8 @@ class VideoPlayerView @JvmOverloads constructor(
             ),
         )
         isFullscreen = true
+        updateCanvasBackground()
+        updateControlsPadding()
         fullscreenBackCallback?.isEnabled = true
         elevation = FULLSCREEN_ELEVATION_PX
 
@@ -474,6 +495,22 @@ class VideoPlayerView @JvmOverloads constructor(
         )
         fullscreenButton.contentDescription = context.getString(
             if (isFullscreen) R.string.player_exit_fullscreen else R.string.player_enter_fullscreen,
+        )
+    }
+
+    private fun updateCanvasBackground() {
+        setBackgroundColor(
+            if (useAmbientBackground && !isFullscreen) Color.TRANSPARENT
+            else context.getColor(R.color.dy_player_canvas),
+        )
+    }
+
+    private fun updateControlsPadding() {
+        controlsOverlay.setPadding(
+            controlsOverlay.paddingLeft,
+            controlsOverlay.paddingTop,
+            controlsOverlay.paddingRight,
+            controlsBottomPadding + if (isFullscreen) 0 else bottomOverlayInset,
         )
     }
 

@@ -293,18 +293,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
             systemInsetRight = systemBars.right
             bubble.updateInsets(systemBars.top, systemBars.bottom, systemBars.left, systemBars.right)
 
-            binding.tvAppTitle.layoutParams = binding.tvAppTitle.layoutParams.apply {
-                height = dp(APP_HEADER_HEIGHT_DP) + systemBars.top
-            }
-            binding.tvAppTitle.setPadding(
-                dp(16) + systemBars.left,
-                systemBars.top,
-                dp(16) + systemBars.right,
-                0,
-            )
             binding.contentPanel.setPadding(
                 dp(8) + systemBars.left,
-                dp(8),
+                dp(8) + systemBars.top,
                 dp(8) + systemBars.right,
                 dp(CONTENT_BOTTOM_NAV_SPACE_DP) + systemBars.bottom,
             )
@@ -380,20 +371,25 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
     }
 
     private fun refreshPlatformUi() {
-        binding.tvAppTitle.text =
-            getString(R.string.main_platform_selector_title_format, currentTitle)
         binding.tvInputTitle.text = when (currentDownloadType) {
             DownloadType.DOU_YIN -> getString(R.string.main_input_title_douyin)
             DownloadType.XIAO_HONG_SHU -> getString(R.string.main_input_title_xhs)
             DownloadType.TWITTER -> getString(R.string.main_input_title_format, getString(R.string.name_x))
         }
-        binding.etUrl.hint = getString(R.string.main_share_input_hint)
+        binding.etUrl.hint = if (currentDownloadType == DownloadType.XIAO_HONG_SHU) {
+            getString(R.string.main_share_input_hint)
+        } else {
+            getString(R.string.profile_share_input_hint, currentTitle)
+        }
         bubble.refreshAutoExpansion()
     }
 
     internal fun setUiEnabled(enabled: Boolean) {
         binding.etUrl.isEnabled = enabled
         binding.btnDownload.isEnabled = enabled
+        binding.btnSaveSheet.isEnabled = enabled
+        binding.btnContinueCollection.isEnabled = enabled
+        previewSection.setSelectionEnabled(enabled)
         // 清除按钮保持常可用：下载/解析进行中也允许清空输入放弃当前任务。
         binding.btnClear.isEnabled = true
     }
@@ -427,7 +423,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(ActivityMainBinding::infl
 
     private companion object {
         const val CLIPBOARD_CHECK_DELAY_MS = 500L
-        const val APP_HEADER_HEIGHT_DP = 48
         const val BOTTOM_NAV_HEIGHT_DP = 58
         const val CONTENT_BOTTOM_NAV_SPACE_DP = 64
     }

@@ -14,6 +14,7 @@ data class PyResolveResponse(
     val diagnostics: PyDiagnosticsResponse? = null,
     val source: PyResolveSourceResponse? = null,
     val work: PyResolveWorkResponse? = null,
+    val collection: PyCollectionResponse? = null,
 )
 
 @JsonClass(generateAdapter = false)
@@ -109,4 +110,13 @@ data class PyResolveLiveVideoResponse(
     val height: Int? = null,
     @Json(name = "duration_ms") val durationMs: Long? = null,
     @Json(name = "format_hint") val formatHint: String? = null,
+)
+
+/** 主页自动翻页批次状态；complete 仅表示上游当前可访问的范围。 */
+@JsonClass(generateAdapter = false)
+data class PyCollectionResponse(
+    @Json(name = "next_cursor") val nextCursor: String? = null,
+    val complete: Boolean = false,
+    val pages: Int = 0,
+    val posts: Int = 0,
 )

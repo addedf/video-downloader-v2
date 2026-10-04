@@ -12,21 +12,6 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/tvAppTitle"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:background="@color/white"
-            android:elevation="2dp"
-            android:gravity="center_vertical"
-            android:includeFontPadding="false"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="@string/app_name"
-            android:textColor="@color/dy_primary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
         <LinearLayout
             android:id="@+id/contentPanel"
             android:layout_width="match_parent"
@@ -141,6 +126,21 @@
                     android:maxLines="1"
                     android:textColor="@color/dy_text_muted"
                     android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvCollectionStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/dy_text_muted"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/btnContinueCollection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/x_continue_collection"
+                    android:visibility="gone" />
 
                 <FrameLayout
                     android:id="@+id/previewTabs"
@@ -259,6 +259,19 @@
                             android:textSize="10sp"
                             android:textStyle="bold" />
 
+                        <CheckBox
+                            android:id="@+id/checkPreviewSelected"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_gravity="bottom|end"
+                            android:layout_margin="8dp"
+                            android:minWidth="48dp"
+                            android:background="@drawable/bg_counter"
+                            android:buttonTint="@color/white"
+                            android:paddingStart="8dp"
+                            android:paddingEnd="8dp"
+                            android:visibility="gone" />
+
                     </com.zemin.downloader.ui.view.DyPreviewCardView>
 
                     <ScrollView
@@ -279,6 +292,32 @@
                             android:gravity="center_horizontal"
                             android:orientation="vertical" />
                     </ScrollView>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <CheckBox
+                        android:id="@+id/checkSelectAll"
+                        android:layout_width="wrap_content"
+                        android:layout_height="48dp"
+                        android:buttonTint="@color/dy_primary"
+                        android:text="@string/main_select_all"
+                        android:textColor="@color/dy_primary"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvSelectionSummary"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="end"
+                        android:accessibilityLiveRegion="polite"
+                        android:textColor="@color/dy_text_muted"
+                        android:textSize="12sp" />
                 </LinearLayout>
 
                 <LinearLayout

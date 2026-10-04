@@ -83,6 +83,19 @@ internal class PreviewImageController(
         imageUrl: String,
         adjacentUrls: List<String>,
         headers: Map<String, String>,
+    ) = loadImage(imageUrl, adjacentUrls, headers, showForeground = true)
+
+    fun loadAmbient(
+        imageUrl: String,
+        adjacentUrls: List<String>,
+        headers: Map<String, String>,
+    ) = loadImage(imageUrl, adjacentUrls, headers, showForeground = false)
+
+    private fun loadImage(
+        imageUrl: String,
+        adjacentUrls: List<String>,
+        headers: Map<String, String>,
+        showForeground: Boolean,
     ) {
         generation++
         val requestGeneration = generation
@@ -90,7 +103,13 @@ internal class PreviewImageController(
         clearPrefetch()
         settleForeground()
         settleAmbient()
-        showStoredImage()
+        if (showForeground) {
+            showStoredImage()
+        } else {
+            currentView.visibility = View.GONE
+            incomingView.visibility = View.GONE
+            showStoredAmbient()
+        }
 
         val request = requestBuilder(
             imageUrl = imageUrl,
@@ -104,11 +123,20 @@ internal class PreviewImageController(
         previewJob = scope.launch {
             val result = imageLoader.execute(request)
             if (requestGeneration != generation || result !is SuccessResult) return@launch
-            showLoadedImage(
-                image = result.image,
-                memoryCacheHit = result.dataSource == DataSource.MEMORY_CACHE,
-                requestGeneration = requestGeneration,
-            )
+            if (showForeground) {
+                showLoadedImage(
+                    image = result.image,
+                    memoryCacheHit = result.dataSource == DataSource.MEMORY_CACHE,
+                    requestGeneration = requestGeneration,
+                )
+            } else {
+                updateAmbient(
+                    image = result.image,
+                    animate = ambientDrawable != null || fallbackCanvasColor != null,
+                    requestGeneration = requestGeneration,
+                )
+                ambientScrim.visibility = View.VISIBLE
+            }
         }
         prefetch(adjacentUrls, headers)
     }
@@ -334,6 +362,10 @@ internal class PreviewImageController(
     private fun showStoredImage() {
         if (currentView.drawable == null) return
         currentView.visibility = View.VISIBLE
+        showStoredAmbient()
+    }
+
+    private fun showStoredAmbient() {
         ambientScrim.visibility = View.VISIBLE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ambientView.visibility = if (ambientDrawable == null) View.GONE else View.VISIBLE

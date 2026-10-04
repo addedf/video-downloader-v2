@@ -55,10 +55,11 @@ abstract class BasePyDownloadModule : IDownloadModule {
         python.getModule(pyModuleName).callAttr(KEY_REFRESH_COOKIES, cookieString)
     }
 
-    override suspend fun resolve(inputText: String) = withContext(Dispatchers.IO) {
-        python.getModule(pyModuleName).callAttr(KEY_RESOLVE, inputText).toString().let {
-            ResolveResultParser.parse(it)
-        }
+    override suspend fun resolve(inputText: String, cursor: String?) = withContext(Dispatchers.IO) {
+        val module = python.getModule(pyModuleName)
+        val response = if (cursor == null) module.callAttr(KEY_RESOLVE, inputText)
+            else module.callAttr(KEY_RESOLVE, inputText, cursor)
+        ResolveResultParser.parse(response.toString())
     }
 
     override suspend fun download(

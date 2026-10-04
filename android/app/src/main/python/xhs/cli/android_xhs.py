@@ -165,6 +165,7 @@ def data_cache(function):
 class AndroidXHS:
     LINK = compile(r"(?:https?://)?www\.xiaohongshu\.com/explore/\S+")
     USER = compile(r"(?:https?://)?www\.xiaohongshu\.com/user/profile/[a-z0-9]+/\S+")
+    USER_HOME = compile(r"(?:https?://)?(?:(?:www|m)\.)?xiaohongshu\.com/user/profile/[a-z0-9]+/?(?:[?#]\S*)?$")
     SHARE = compile(r"(?:https?://)?www\.xiaohongshu\.com/discovery/item/\S+")
     SHORT = SHORT_XHS_URL_PATTERN
     ID = compile(r"(?:explore|item)/(\S+)?\?")
@@ -361,6 +362,8 @@ class AndroidXHS:
 
     async def extract_links(self, url: str) -> list[str]:
         items = str(url or "").split()
+        if any(self.USER_HOME.fullmatch(item.rstrip(".,;，。；)）")) for item in items):
+            raise ValueError("小红书仅支持单篇笔记分享链接，不支持用户主页")
         urls = self._extract_direct_links(items)
         if urls:
             if self.flow is not None:
@@ -372,6 +375,8 @@ class AndroidXHS:
             if short := self.SHORT.search(item):
                 short_url = short.group()
                 item = await self._resolve_short_url(short_url)
+            if self.USER_HOME.fullmatch(item):
+                raise ValueError("小红书仅支持单篇笔记分享链接，不支持用户主页")
             if share := self.SHARE.search(item):
                 urls.append(share.group())
             elif link := self.LINK.search(item):

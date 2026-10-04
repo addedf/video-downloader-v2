@@ -33,6 +33,7 @@ data class PyResolveResult(
     val mediaType: String? = null,
     val resources: List<ResolvedResource> = emptyList(),
     val schemaVersion: Int = 2,
+    val collection: com.zemin.downloader.common.bean.PyCollectionResponse? = null,
     val capabilities: ResolveCapabilities = ResolveCapabilities(),
     val counts: ResolveCounts = ResolveCounts(),
     val timings: Map<String, Int> = emptyMap(),

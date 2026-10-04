@@ -54,9 +54,11 @@ def refresh_cookies(cookie_header: str) -> str:
     return json.dumps({"ok": True}, ensure_ascii=False)
 
 
-def resolve(input_text: str) -> str:
+def resolve(input_text: str, cursor: Optional[str] = None) -> str:
     flow = AndroidFlowLogger(_FLOW_LOGGER_NAME)
     try:
+        if cursor is not None:
+            raise ValueError("小红书仅支持单篇笔记分享链接，不支持主页分页提取")
         result = asyncio.run(_resolve_async(input_text, flow))
     except Exception as exc:
         flow.mark_total()
@@ -110,7 +112,8 @@ async def _resolve_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, 
             items = await xhs.extract(input_text, download=False, data=True)
     item = next((value for value in items if isinstance(value, dict) and value.get("作品ID")), None)
     if not item:
-        return _error("小红书公开页面未返回可解析作品数据", timings=dict(flow.timings))
+        return _error("小红书仅支持单篇笔记分享链接；未返回作品数据，请检查链接或访问权限",
+                      timings=dict(flow.timings))
     flow.mark_total()
     response = _build_resolve_response(item, input_text)
     counts = (response.get("work") or {}).get("counts") or {}
@@ -140,6 +143,8 @@ async def _download_async(
     if resource_type == "audio":
         return _error("小红书作品暂不提供独立音频保存", output_root=output_root)
     indices = _selected_indices(selection)
+    if indices == []:
+        return _error("请至少选择一个要保存的内容", output_root=output_root)
     include_live = bool(selection.get("include_live_video", False))
 
     flow.info("download.begin", input=url_preview(input_text), output_dir=str(output_root))
@@ -307,6 +312,11 @@ def _parse_download_request(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     selection = request.get("selection")
     if not isinstance(selection, dict) or selection.get("resource_type") not in {"video", "image", "cover", "audio"}:
         raise ValueError("小红书下载选择格式错误")
+    if not isinstance(selection.get("include_live_video", False), bool):
+        raise ValueError("include_live_video 必须是布尔值")
+    if selection.get("include_live_video") and selection["resource_type"] != "image":
+        raise ValueError("只有图片可以同时保存 Live 视频")
+    _selected_indices(selection)
     return request
 
 
@@ -317,14 +327,21 @@ def _select_source_input(input_text: str, request: Optional[Dict[str, Any]]) -> 
 
 
 def _selected_indices(selection: Dict[str, Any]) -> Optional[List[int]]:
-    if selection.get("resource_type") == "cover":
-        return [1]
+    resource_type = selection.get("resource_type")
+    resource_ids = selection.get("resource_ids")
+    if resource_ids is None:
+        return [1] if resource_type == "cover" else None
+    if not isinstance(resource_ids, list) or not all(isinstance(value, str) for value in resource_ids):
+        raise ValueError("resource_ids 必须是字符串数组")
     result = []
-    for value in selection.get("resource_ids") or []:
-        match = re.fullmatch(r"image_(\d+)", str(value))
-        if match:
-            result.append(int(match.group(1)))
-    return result or None
+    for value in resource_ids:
+        match = re.fullmatch(rf"{resource_type}_([1-9]\d*)", value)
+        if not match or (resource_type != "image" and match.group(1) != "1"):
+            raise ValueError("所选资源与保存类型不匹配，请重新解析")
+        index = int(match.group(1))
+        if index not in result:
+            result.append(index)
+    return result
 
 def _changed_files_since(root: Path, started_at: float) -> tuple[List[str], List[str]]:
     return changed_files_since(
@@ -405,9 +422,11 @@ def _error(
     timings: Optional[Dict[str, int]] = None,
     traceback_text: str = "",
 ) -> Dict[str, Any]:
-    return build_error_response(
+    # ResolveResultParser checks the envelope before reading the failure reason.
+    # Download consumers ignore the extra version field and retain all counters.
+    return {"schema_version": 2, **build_error_response(
         message,
         output_root=output_root,
         timings=timings,
         traceback_text=traceback_text,
-    )
+    )}

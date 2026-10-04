@@ -42,7 +42,7 @@ def snapshot_request():
                 "expected_work_type": "video",
                 "selection": {
                     "resource_type": "video",
-                    "resource_ids": [],
+                    "resource_ids": ["video_1"],
                     "include_live_video": False,
                 },
                 "snapshot": {

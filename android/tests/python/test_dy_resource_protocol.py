@@ -321,7 +321,6 @@ def request_json(resource_type="image", include_live_video=False, **overrides):
         "expected_work_type": "live_photo",
         "selection": {
             "resource_type": resource_type,
-            "resource_ids": [],
             "include_live_video": include_live_video,
         },
     }
@@ -419,6 +418,61 @@ class DownloadRequestTest(unittest.TestCase):
 
 
 class SelectedDownloaderTest(unittest.IsolatedAsyncioTestCase):
+    async def test_only_selected_image_and_its_paired_live_video_are_saved(self):
+        aweme = base_aweme()
+        aweme["image_post_info"] = {"images": [image_item(1, live=True), image_item(2, live=True)]}
+        work = normalize_aweme(aweme)
+        request = parse_download_request(request_json(selection={
+            "resource_type": "image",
+            "resource_ids": ["image_2"],
+            "include_live_video": True,
+        }))
+        downloader = FakeDownloader()
+
+        with tempfile.TemporaryDirectory() as output_dir:
+            result = await download_selected_resources(
+                request=request, aweme_data=aweme, work=work,
+                downloader=downloader, output_root=Path(output_dir),
+            )
+
+        self.assertEqual(["image_2", "image_2:live_video"],
+                         [asset["resource_id"] for asset in result["saved_assets"]])
+        self.assertEqual(2, result["total"])
+        self.assertTrue(all("image-2" in call[0] for call in downloader.calls))
+
+    async def test_empty_or_stale_selection_never_downloads_other_resources(self):
+        aweme = base_aweme()
+        aweme["images"] = [image_item(1)]
+        work = normalize_aweme(aweme)
+        for ids in ([], ["image_99"], ["image_1", "image_99"]):
+            with self.subTest(ids=ids), tempfile.TemporaryDirectory() as output_dir:
+                request = parse_download_request(request_json(
+                    expected_work_type="gallery",
+                    selection={"resource_type": "image", "resource_ids": ids},
+                ))
+                downloader = FakeDownloader()
+                result = await download_selected_resources(
+                    request=request, aweme_data=aweme, work=work,
+                    downloader=downloader, output_root=Path(output_dir),
+                )
+                self.assertFalse(result["ok"])
+                self.assertEqual([], downloader.calls)
+                self.assertEqual([], list(Path(output_dir).iterdir()))
+
+    async def test_null_ids_preserve_legacy_save_all_behavior(self):
+        aweme = base_aweme()
+        aweme["images"] = [image_item(1), image_item(2)]
+        request = parse_download_request(request_json(
+            expected_work_type="gallery",
+            selection={"resource_type": "image", "resource_ids": None},
+        ))
+        with tempfile.TemporaryDirectory() as output_dir:
+            result = await download_selected_resources(
+                request=request, aweme_data=aweme, work=normalize_aweme(aweme),
+                downloader=FakeDownloader(), output_root=Path(output_dir),
+            )
+        self.assertEqual(2, result["success"])
+
     async def test_live_download_attempts_image_and_paired_video_independently(self):
         aweme = base_aweme()
         aweme["image_post_info"] = {"images": [image_item(1, live=True)]}

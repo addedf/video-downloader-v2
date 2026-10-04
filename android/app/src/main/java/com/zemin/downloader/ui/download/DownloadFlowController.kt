@@ -43,13 +43,22 @@ class DownloadFlowController(private val host: MainActivity) {
 
     private var downloading = false
 
-    fun resolveAndRenderPreview(inputText: String) {
+    private var resolving = false
+    fun resolveAndRenderPreview(
+        inputText: String,
+        continueCollection: Boolean = false,
+    ) {
+        if (resolving || downloading) return
+        val previous = host.previewSection.preview.takeIf { continueCollection }
+        val cursor = previous?.collection?.nextCursor
+        if (continueCollection && cursor.isNullOrBlank()) return
         val result = PlatformResolver.resolve(inputText)
         if (result == null) {
             host.showUnsupportedLink()
             return
         }
 
+        resolving = true
         host.lifecycleScope.launch {
             if (currentDownloadType != result.downloadType) {
                 BridgeAbilityManager.update(result.downloadType)
@@ -60,9 +69,10 @@ class DownloadFlowController(private val host: MainActivity) {
                 primaryText = host.getString(R.string.main_progress_resolving),
                 detailText = host.getString(R.string.main_progress_resolving_detail),
             )
-            host.previewSection.clear()
+            if (previous == null) host.previewSection.clear()
             try {
-                val preview = DownloadModule.resolve(result.normalizedInput)
+                val next = DownloadModule.resolve(result.normalizedInput, cursor)
+                val preview = com.zemin.downloader.ui.preview.CollectionPreviewPolicy.merge(previous, next)
                 if (!preview.ok) {
                     recordFailure(
                         inputText = result.normalizedInput,
@@ -94,7 +104,7 @@ class DownloadFlowController(private val host: MainActivity) {
                         diagnostics = preview.diagnostics,
                     )
                 }
-                host.previewSection.render(result.normalizedInput, preview)
+                host.previewSection.render(result.normalizedInput, preview, preserveSelection = previous != null)
             } catch (e: Exception) {
                 recordFailure(
                     inputText = result.normalizedInput,
@@ -110,6 +120,7 @@ class DownloadFlowController(private val host: MainActivity) {
                     )
                 )
             } finally {
+                resolving = false
                 host.setUiEnabled(true)
                 host.bubble.hide()
             }
@@ -121,6 +132,7 @@ class DownloadFlowController(private val host: MainActivity) {
         preview: PyResolveResult? = null,
         request: DownloadRequest? = null,
     ) {
+        if (downloading || resolving) return
         downloading = true
         host.setUiEnabled(false)
         host.bubble.cancelHide()
@@ -170,7 +182,8 @@ class DownloadFlowController(private val host: MainActivity) {
                     }
                 }
 
-                if (result.ok || result.skipped > 0) {
+                val registrationFailed = result.files.size - registeredUris.size
+                if ((result.ok || result.skipped > 0) && registrationFailed == 0) {
                     withContext(Dispatchers.IO) {
                         StoreModule.cleanupDownloadSidecars()
                     }
@@ -193,7 +206,9 @@ class DownloadFlowController(private val host: MainActivity) {
                     progressHideDelayMs = ProgressBubblePolicy.resultHideDelay(
                         ProgressBubbleStage.ERROR
                     )
-                    val errorMessage = result.error ?: result.message
+                    val errorMessage = if (registrationFailed > 0) {
+                        "已保存 ${registeredUris.size} 个文件，$registrationFailed 个文件写入相册失败"
+                    } else result.error ?: result.message
                     recordFailure(
                         inputText = shareText,
                         operation = "下载",
@@ -211,7 +226,7 @@ class DownloadFlowController(private val host: MainActivity) {
                         title = historyTitle,
                         mediaType = historyMediaType,
                         status = DownloadHistoryRecord.STATUS_FAILED,
-                        savedUris = emptyList(),
+                        savedUris = registeredUris,
                         errorMessage = errorMessage,
                         createdAt = taskStartedAt,
                     )
@@ -253,11 +268,18 @@ class DownloadFlowController(private val host: MainActivity) {
     }
 
     fun saveCurrentPreview() {
+        if (downloading) return
         val input = host.previewSection.input.orEmpty()
         val preview = host.previewSection.preview
         if (input.isBlank() || preview == null) return
+        val request = host.previewSection.buildDownloadRequest()
+        if (request == null) {
+            toast(host.getString(R.string.main_selection_invalid))
+            return
+        }
         host.hideSheets()
-        startDownload(input, preview, host.previewSection.buildDownloadRequest())
+        val downloadInput = if (preview.collection != null) preview.sourceUrl ?: input else input
+        startDownload(downloadInput, preview, request)
     }
 
     fun retryLatestHistory() {

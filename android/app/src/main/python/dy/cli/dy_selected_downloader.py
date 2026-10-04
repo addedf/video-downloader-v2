@@ -67,11 +67,12 @@ def parse_download_request(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     resource_type = selection.get("resource_type")
     if resource_type not in SUPPORTED_RESOURCE_TYPES:
         raise ValueError("不支持的保存内容类型")
-    resource_ids = selection.get("resource_ids", [])
-    if not isinstance(resource_ids, list) or not all(isinstance(item, str) for item in resource_ids):
-        raise ValueError("resource_ids 必须是字符串数组")
-    if any(not item.strip() for item in resource_ids):
-        raise ValueError("resource_ids 不能包含空值")
+    resource_ids = selection.get("resource_ids")
+    if resource_ids is not None:
+        if not isinstance(resource_ids, list) or not all(isinstance(item, str) for item in resource_ids):
+            raise ValueError("resource_ids 必须是字符串数组")
+        if any(not item.strip() for item in resource_ids):
+            raise ValueError("resource_ids 不能包含空值")
     if not isinstance(selection.get("include_live_video", False), bool):
         raise ValueError("include_live_video 必须是布尔值")
     snapshot = request.get("snapshot")
@@ -261,8 +262,9 @@ async def download_selected_resources(
         return _failure(validation_error, output_root)
 
     resources = work.get("resources", {}).get(_resource_bucket(resource_type), [])
-    requested_ids = set(selection.get("resource_ids") or [])
-    if requested_ids:
+    resource_ids = selection.get("resource_ids")
+    if resource_ids is not None:
+        requested_ids = set(resource_ids)
         resources = [item for item in resources if item.get("id") in requested_ids]
         found_ids = {str(item.get("id") or "") for item in resources}
         missing_ids = requested_ids - found_ids
@@ -287,7 +289,7 @@ async def download_selected_resources(
 
     total_assets = len(resources)
     if resource_type == "image" and include_live_video:
-        total_assets += sum(1 for item in resources if item.get("live_video", {}).get("available"))
+        total_assets += sum(1 for item in resources if (item.get("live_video") or {}).get("available"))
     if downloader.progress_reporter:
         downloader.progress_reporter.set_item_total(total_assets, "按所选内容保存")
 

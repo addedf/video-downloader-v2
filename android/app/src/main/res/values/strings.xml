@@ -52,13 +52,17 @@
     <string name="main_live_video_option">Live 视频</string>
     <string name="main_save_video">保存视频</string>
     <string name="main_save_images">保存 %1$d 张图片</string>
-    <string name="main_save_images_live">保存图片 + Live 视频</string>
+    <string name="main_save_images_live">保存 %1$d 张图片 + Live</string>
     <string name="main_save_cover">保存封面</string>
     <string name="main_save_audio">保存音频</string>
     <string name="main_preview_counter_image_format">图片 %1$d / %2$d</string>
     <string name="main_preview_counter_video_format">视频 %1$d / %2$d</string>
     <string name="main_preview_counter_cover">封面</string>
-    <string name="main_preview_desc_image">点击缩略图切换图集预览。保存时默认保存已解析出的全部图片和封面。</string>
+    <string name="main_preview_desc_image">点击缩略图切换预览，取消勾选不想保存的内容。保存时仅保存当前分类中勾选的资源。</string>
+    <string name="main_select_all">全选</string>
+    <string name="main_select_resource">保存%1$s %2$d</string>
+    <string name="main_selection_summary">已选 %1$d / %2$d 项</string>
+    <string name="main_selection_invalid">保存选择无效，请重新解析后再试</string>
     <string name="main_preview_desc_video">解析出的视频资源会在这里预览，点击保存后写入系统相册。</string>
     <string name="player_play">播放</string>
     <string name="player_pause">暂停</string>
@@ -81,7 +85,7 @@
     <string name="main_save_sheet_title">保存资源</string>
     <string name="main_mine_title">我的</string>
     <string name="main_login_douyin">登录抖音</string>
-    <string name="main_login_douyin_hint">登录后可尝试解析需要权限的日常作品</string>
+    <string name="main_login_douyin_hint">登录后可尝试解析需要权限的抖音作品或主页</string>
     <string name="main_login_status">登录状态：%1$s</string>
     <string name="main_login_status_logged_in">已登录</string>
     <string name="main_login_status_logged_out">未登录</string>
@@ -100,6 +104,7 @@
     <string name="main_exception_log_cleared">已清除异常日志</string>
     <string name="main_toast_link_copied">已复制链接</string>
     <string name="main_preview_resource_video">视频</string>
+    <string name="main_preview_resource_image">图片</string>
     <string name="main_preview_resource_cover">封面</string>
     <string name="main_preview_resource_audio">音频</string>
     <string name="main_preview_resource_image_format">图片 %1$d</string>
@@ -164,4 +169,15 @@
     <string name="update_install_later">暂不安装</string>
     <string name="update_install_settings_unavailable">无法打开安装权限设置</string>
     <string name="update_installer_unavailable">系统中没有可用的安装程序</string>
+    <string name="x_continue_collection">继续提取更早媒体</string>
+    <string name="x_collection_status">已提取 %1$d 个媒体。%2$s</string>
+    <string name="x_tab_all">全部 %1$d</string>
+    <string name="x_media_counter">媒体 %1$d / %2$d</string>
+    <string name="x_save_all">保存全部 %1$d 项</string>
+    <string name="x_save_videos">保存 %1$d 个视频</string>
+    <string name="x_media_mixed">视频与图片</string>
+    <string name="x_preview_previous">上一组</string>
+    <string name="x_preview_next">下一组</string>
+    <string name="profile_share_input_hint">粘贴%1$s作品或博主主页链接</string>
+    <string name="profile_save_all_live">保存 %1$d 项及实况视频</string>
 </resources>

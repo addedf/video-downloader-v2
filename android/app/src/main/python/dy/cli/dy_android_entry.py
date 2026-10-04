@@ -1,4 +1,4 @@
-"""Android V2 entry for anonymous Douyin single-work resolve/download."""
+"""Android V2 entry for Douyin single-work and author-media resolve/download."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from .dy_anonymous_downloader import AnonymousMediaDownloader
 from . import dy_anonymous_share as anonymous_share
 from .dy_anonymous_share import AnonymousDouyinError, AnonymousDouyinResult, resolve_public_douyin
 from .dy_resource_normalizer import build_resolve_response, normalize_aweme
+from .dy_profile import PROFILE_MEDIA_HOSTS, canonical_profile_url, profile_user_id, resolve_profile
 from .dy_selected_downloader import (
     build_snapshot_download_context,
     download_selected_resources,
@@ -79,12 +80,12 @@ def refresh_cookies(cookie_header: str) -> str:
     return json.dumps({"ok": True, "cookie_fallback": bool(_runtime_cookies(config))}, ensure_ascii=False)
 
 
-def resolve(input_text: str) -> str:
+def resolve(input_text: str, cursor=None) -> str:
     flow = new_flow_logger()
     diagnostics = _new_diagnostics(input_text)
     try:
         flow.info("resolve.begin", input=url_preview(input_text), auth_mode="anonymous")
-        result = asyncio.run(_resolve_async(input_text, flow))
+        result = asyncio.run(_resolve_async(input_text, flow, cursor=cursor))
     except Exception as exc:
         flow.mark_total()
         flow.error("resolve.failed", total_ms=flow.timings.get("total_ms"), error=str(exc))
@@ -92,6 +93,9 @@ def resolve(input_text: str) -> str:
         diagnostics["response_summary"] = "bridge exception"
         result = _error(str(exc), timings=dict(flow.timings), diagnostics=diagnostics)
         result["traceback"] = _safe_diagnostic_traceback(traceback.format_exc(limit=12))
+    # ResolveResultParser requires v2 even for errors, otherwise the actionable
+    # login/network message is replaced with a missing-schema protocol error.
+    result.setdefault("schema_version", 2)
     return json.dumps(result, ensure_ascii=False)
 
 
@@ -102,7 +106,7 @@ def download(input_text: str, request_json=None, progress_callback=None) -> str:
         if request_json is not None and not isinstance(request_json, str):
             progress_callback = request_json
             request_json = None
-        request = parse_download_request(request_json)
+        request = _parse_entry_download_request(request_json)
         flow.info("download.begin", input=url_preview(input_text), auth_mode="anonymous")
         result = asyncio.run(_download_async(input_text, flow, progress_callback, request))
     except Exception as exc:
@@ -115,7 +119,36 @@ def download(input_text: str, request_json=None, progress_callback=None) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-async def _resolve_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, Any]:
+def _parse_entry_download_request(request_json):
+    if request_json:
+        try:
+            request = json.loads(request_json)
+        except (TypeError, ValueError):
+            return parse_download_request(request_json)
+        if isinstance(request, dict) and str((request.get("source") or {}).get("id") or "").startswith("profile-"):
+            return request  # The shared collection downloader validates this protocol.
+    return parse_download_request(request_json)
+
+
+async def _resolve_profile_response(input_text, user_id, config, flow, cursor):
+    try:
+        with flow.stage("resolve_author_posts"):
+            result = await resolve_profile(input_text, user_id, cookies=_runtime_cookies(config),
+                                           proxy=config.get("proxy"), cursor=cursor)
+    except Exception as exc:
+        diagnostics = _new_diagnostics(input_text, response_summary="profile posts unavailable")
+        diagnostics["channel"] = "douyin_signed_profile"
+        diagnostics["error"] = _safe_diagnostic_text(str(exc))
+        _append_stage(diagnostics, "resolve_author_posts", "failed", flow.timings.get("resolve_author_posts_ms"), exc)
+        result = _error(diagnostics["error"], diagnostics=diagnostics)
+        result["source"] = {"platform": "douyin", "input_url": input_text,
+                            "resolved_url": canonical_profile_url(user_id), "id": f"profile-{user_id}"}
+    flow.mark_total()
+    result.update({"schema_version": 2, "timings": dict(flow.timings), "download_metrics": [], "api_metrics": []})
+    return result
+
+
+async def _resolve_async(input_text: str, flow: AndroidFlowLogger, cursor=None) -> Dict[str, Any]:
     diagnostics = _new_diagnostics(input_text)
     config = _android_global_config.config_loader
     if config is None:
@@ -125,7 +158,15 @@ async def _resolve_async(input_text: str, flow: AndroidFlowLogger) -> Dict[str, 
         diagnostics["error"] = "请先粘贴抖音分享文本或链接"
         return _error("请先粘贴抖音分享文本或链接", diagnostics=diagnostics)
 
-    resolved = await _resolve_anonymous_or_cookie_fallback(input_text, config, flow, diagnostics)
+    user_id = profile_user_id(input_text)
+    if user_id:
+        return await _resolve_profile_response(input_text, user_id, config, flow, cursor)
+    try:
+        resolved = await _resolve_anonymous_or_cookie_fallback(input_text, config, flow, diagnostics)
+    except anonymous_share.AnonymousDouyinProfile as profile:
+        return await _resolve_profile_response(input_text, profile.user_id, config, flow, cursor)
+    if cursor is not None:
+        return _error("只有博主主页支持继续提取", diagnostics=diagnostics)
     if resolved is None:
         return _error(diagnostics["error"], timings=dict(flow.timings), diagnostics=diagnostics)
 
@@ -144,6 +185,25 @@ async def _download_async(
     config = _android_global_config.config_loader
     if config is None:
         return _error("Python runtime is not initialized", diagnostics=_new_diagnostics(input_text))
+
+    if isinstance(request, dict) and str((request.get("source") or {}).get("id") or "").startswith("profile-"):
+        from common.profile_download import download_collection_snapshot
+        source_url = str((request.get("source") or {}).get("url") or "")
+        user_id = profile_user_id(source_url)
+        input_id = profile_user_id(input_text)
+        if not user_id or (input_id and input_id != user_id):
+            raise ValueError("下载主页与预览不一致，请重新解析")
+        if not input_id:
+            normalized_input = anonymous_share._normalize_input_url(input_text)
+            anonymous_share._validate_douyin_url(normalized_input)
+            if not anonymous_share._is_short_host(urlparse(normalized_input).hostname or ""):
+                raise ValueError("下载主页与当前链接不一致，请重新解析")
+        return await download_collection_snapshot(
+            request, Path(config.get("path")) / "Douyin", progress_callback,
+            platform="douyin", expected_source_id=f"profile-{user_id}",
+            allowed_host_suffixes=PROFILE_MEDIA_HOSTS,
+            headers={"Referer": "https://www.douyin.com/", "User-Agent": anonymous_share._USER_AGENT},
+        )
 
     source_input = select_download_source_url(input_text, request)
     if not str(source_input or "").strip():
@@ -294,6 +354,8 @@ async def _resolve_anonymous_or_cookie_fallback(
     try:
         with flow.stage("resolve_public_share", input=url_preview(input_text)):
             resolved = await resolve_public_douyin(input_text, proxy=config.get("proxy"))
+    except anonymous_share.AnonymousDouyinProfile:
+        raise
     except AnonymousDouyinError as exc:
         _append_stage(diagnostics, "resolve_public_share", "failed", flow.timings.get("resolve_public_share_ms"), exc)
         diagnostics["response_summary"] = _response_summary(str(exc), "public_share")

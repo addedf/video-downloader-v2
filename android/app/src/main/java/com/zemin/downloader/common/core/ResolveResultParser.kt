@@ -57,7 +57,7 @@ object ResolveResultParser {
         }
         val capabilities = work?.capabilities
         val counts = work?.counts
-        val resourceError = if (response.ok && resources.isEmpty()) {
+        val resourceError = if (response.ok && resources.isEmpty() && response.collection == null) {
             "解析结果中没有可保存的资源"
         } else {
             null
@@ -80,6 +80,7 @@ object ResolveResultParser {
             mediaType = work?.type,
             resources = resources,
             schemaVersion = 2,
+            collection = response.collection,
             // capabilities 声明来自 Python 端，这里与实际分组交叉验证：不信任生产端自行声明的能力位。
             capabilities = ResolveCapabilities(
                 hasVideo = capabilities?.hasVideo == true && groups?.videos?.isNotEmpty() == true,

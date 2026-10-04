@@ -14,7 +14,7 @@ interface IDownloadModule : IBaseBusinessModule {
 
     suspend fun warmUp(): PyObject?
 
-    suspend fun resolve(inputText: String): PyResolveResult
+    suspend fun resolve(inputText: String, cursor: String? = null): PyResolveResult
 
     suspend fun download(
         inputText: String,

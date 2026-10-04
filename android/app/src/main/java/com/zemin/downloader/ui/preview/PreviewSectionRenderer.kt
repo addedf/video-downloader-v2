@@ -42,6 +42,9 @@ class PreviewSectionRenderer(
     private var selectedResourceTab: ResourceTab = ResourceTab.IMAGE
     private var availableResourceTabs: List<ResourceTab> = emptyList()
     private var selectedPreviewIndex = 0
+    private val selectedResourceIds = mutableSetOf<String>()
+    private var selectionEnabled = true
+    private var updatingSelectionUi = false
 
     val preview: PyResolveResult? get() = currentPreview
     val input: String? get() = currentPreviewInput
@@ -59,12 +62,32 @@ class PreviewSectionRenderer(
             currentView = ui.ivPreviewCover,
             incomingView = ui.ivPreviewCoverIncoming,
         )
+        ui.videoPreview.setBottomOverlayInset(host.dp(56))
         ui.btnImageTab.setOnClickListener { selectResourceTab(tabAt(0), userInitiated = true) }
         ui.btnCoverTab.setOnClickListener { selectResourceTab(tabAt(1), userInitiated = true) }
         ui.btnAudioTab.setOnClickListener { selectResourceTab(tabAt(2), userInitiated = true) }
         ui.checkLiveVideo.setOnCheckedChangeListener { button, _ ->
             if (button.isPressed) UiMotion.performHaptic(button, UiMotion.Haptic.TICK)
-            refreshSelectionUi()
+            if (!updatingSelectionUi) refreshSelectionUi()
+        }
+        ui.checkSelectAll.setOnCheckedChangeListener { button, checked ->
+            if (!updatingSelectionUi) {
+                val resources = currentPreview?.let { PreviewUiPolicy.resourcesFor(it, selectedResourceTab) }.orEmpty()
+                resources.forEach { resource ->
+                    if (checked) selectedResourceIds.add(resource.id) else selectedResourceIds.remove(resource.id)
+                }
+                if (button.isPressed) UiMotion.performHaptic(button, UiMotion.Haptic.TICK)
+                refreshSelectionUi()
+            }
+        }
+        ui.checkPreviewSelected.setOnCheckedChangeListener { button, checked ->
+            if (!updatingSelectionUi) {
+                val resource = currentPreview?.let { PreviewUiPolicy.resourcesFor(it, selectedResourceTab) }
+                    ?.getOrNull(selectedPreviewIndex) ?: return@setOnCheckedChangeListener
+                if (checked) selectedResourceIds.add(resource.id) else selectedResourceIds.remove(resource.id)
+                if (button.isPressed) UiMotion.performHaptic(button, UiMotion.Haptic.TICK)
+                refreshSelectionUi()
+            }
         }
     }
 
@@ -72,20 +95,41 @@ class PreviewSectionRenderer(
         if (this::previewImages.isInitialized) previewImages.dispose()
     }
 
-    fun render(inputText: String, preview: PyResolveResult) {
+    fun render(inputText: String, preview: PyResolveResult, preserveSelection: Boolean = false) {
         val mediaTypeText = formatMediaType(preview.mediaType)
         val selectedResourceCount = preview.resources.size
         val title = preview.title.orEmpty().ifBlank { host.getString(R.string.main_preview_title_fallback) }
         val author = preview.author.orEmpty().ifBlank { currentTitle }
         val uiState = PreviewUiPolicy.stateFor(preview)
-        if (uiState.tabs.isEmpty()) {
+        if (uiState.tabs.isEmpty() && preview.collection == null) {
             clear()
             host.showError(host.getString(R.string.main_error_no_resources))
             return
         }
 
+        val previousResourceIds = currentPreview?.resources.orEmpty().map { it.id }.toSet()
+        val resourceIds = preview.resources.map { it.id }.toSet()
+        val keepSelection = preserveSelection && currentPreview?.sourceId == preview.sourceId
+        if (keepSelection) {
+            selectedResourceIds.retainAll(resourceIds)
+            selectedResourceIds.addAll(resourceIds - previousResourceIds)
+        } else {
+            selectedResourceIds.clear()
+            selectedResourceIds.addAll(resourceIds)
+        }
         currentPreview = preview
         currentPreviewInput = inputText
+        ui.tvCollectionStatus.visibility = if (preview.collection == null) View.GONE else View.VISIBLE
+        ui.tvCollectionStatus.text = host.getString(
+            R.string.x_collection_status, preview.resources.size, preview.message,
+        )
+        val canContinue = !preview.collection?.nextCursor.isNullOrBlank()
+        ui.btnContinueCollection.visibility = if (canContinue) View.VISIBLE else View.GONE
+        ui.btnContinueCollection.text = host.getString(R.string.x_continue_collection)
+        ui.btnContinueCollection.setOnClickListener {
+            host.downloadFlow.resolveAndRenderPreview(inputText, continueCollection = true)
+        }
+
         ui.tvPreviewTitle.text = title
         ui.tvPreviewMeta.text = host.getString(
             R.string.main_preview_meta_format,
@@ -95,8 +139,12 @@ class PreviewSectionRenderer(
         )
         configureTabButtons(uiState.tabs, preview)
         host.refreshActionButton()
-        selectedResourceTab = uiState.defaultTab
-        ui.checkLiveVideo.isChecked = false
+        if (!keepSelection || selectedResourceTab !in uiState.tabs) {
+            selectedResourceTab = uiState.defaultTab
+        }
+        updatingSelectionUi = true
+        if (!keepSelection) ui.checkLiveVideo.isChecked = false
+        updatingSelectionUi = false
         selectResourceTab(selectedResourceTab, userInitiated = false)
         UiMotion.revealFromBelow(ui.previewSection)
         UiMotion.performHaptic(ui.previewSection, UiMotion.Haptic.CONFIRM)
@@ -105,16 +153,21 @@ class PreviewSectionRenderer(
     fun clear() {
         currentPreview = null
         currentPreviewInput = null
+        selectedResourceIds.clear()
         UiMotion.concealBelow(ui.previewSection)
         previewImages.clear()
         ui.videoPreview.stopPlayback()
         ui.videoPreview.visibility = View.GONE
         ui.thumbContainer.removeAllViews()
+        ui.checkPreviewSelected.visibility = View.GONE
+        ui.checkPreviewSelected.isEnabled = false
+        ui.checkPreviewSelected.isChecked = false
         selectedPreviewIndex = 0
         ui.checkLiveVideo.isChecked = false
         ui.checkLiveVideo.visibility = View.GONE
         ui.previewTabIndicator.visibility = View.INVISIBLE
         availableResourceTabs = emptyList()
+        ui.btnSaveSheet.isEnabled = false
         host.hideSheets()
         host.refreshActionButton()
     }
@@ -164,6 +217,7 @@ class PreviewSectionRenderer(
             if (tab != null) {
                 val count = PreviewUiPolicy.resourcesFor(preview, tab).size
                 button.text = when (tab) {
+                    ResourceTab.ALL -> host.getString(R.string.x_tab_all, count)
                     ResourceTab.VIDEO -> host.getString(R.string.main_preview_tab_primary_video, count)
                     ResourceTab.IMAGE -> host.getString(R.string.main_preview_tab_image, count)
                     ResourceTab.COVER -> host.getString(R.string.main_preview_tab_cover, count)
@@ -181,6 +235,7 @@ class PreviewSectionRenderer(
         tab: ResourceTab,
     ) {
         ui.tvPreviewCounter.text = when (tab) {
+            ResourceTab.ALL -> host.getString(R.string.x_media_counter, index + 1, total)
             ResourceTab.IMAGE -> host.getString(
                 R.string.main_preview_counter_image_format,
                 index + 1,
@@ -204,12 +259,30 @@ class PreviewSectionRenderer(
         }
         ui.checkLiveVideo.visibility = if (showLive) View.VISIBLE else View.GONE
 
-        val resourceCount = PreviewUiPolicy.resourcesFor(preview, selectedResourceTab).size
+        val resources = PreviewUiPolicy.resourcesFor(preview, selectedResourceTab)
+        val resourceCount = resources.count { it.id in selectedResourceIds }
+        updatingSelectionUi = true
+        ui.checkSelectAll.isChecked = resources.isNotEmpty() && resourceCount == resources.size
+        ui.checkSelectAll.isEnabled = selectionEnabled
+        val currentResource = resources.getOrNull(selectedPreviewIndex)
+        ui.checkPreviewSelected.visibility = if (currentResource == null) View.GONE else View.VISIBLE
+        ui.checkPreviewSelected.isChecked = currentResource?.id in selectedResourceIds
+        ui.checkPreviewSelected.isEnabled = selectionEnabled && currentResource != null
+        ui.checkPreviewSelected.contentDescription = currentResource?.let {
+            resourceSelectionDescription(it, selectedPreviewIndex)
+        }
+        updatingSelectionUi = false
+        ui.tvSelectionSummary.text = host.getString(R.string.main_selection_summary, resourceCount, resources.size)
+        ui.checkLiveVideo.isEnabled = selectionEnabled && resourceCount > 0
+        ui.btnSaveSheet.isEnabled = selectionEnabled && resourceCount > 0
         val includeLive = showLive && ui.checkLiveVideo.isChecked
         ui.btnSaveSheet.text = when (selectedResourceTab) {
-            ResourceTab.VIDEO -> host.getString(R.string.main_save_video)
+            ResourceTab.ALL -> host.getString(
+                if (includeLive) R.string.profile_save_all_live else R.string.x_save_all, resourceCount,
+            )
+            ResourceTab.VIDEO -> host.getString(R.string.x_save_videos, resourceCount)
             ResourceTab.IMAGE -> if (includeLive) {
-                host.getString(R.string.main_save_images_live)
+                host.getString(R.string.main_save_images_live, resourceCount)
             } else {
                 host.getString(R.string.main_save_images, resourceCount)
             }
@@ -218,9 +291,18 @@ class PreviewSectionRenderer(
         }
     }
 
+    fun setSelectionEnabled(enabled: Boolean) {
+        selectionEnabled = enabled
+        refreshSelectionUi()
+    }
+
     fun buildDownloadRequest(): DownloadRequest? {
         val preview = currentPreview ?: return null
         if (preview.schemaVersion != 2) return null
+        val resourceIds = PreviewUiPolicy.resourcesFor(preview, selectedResourceTab)
+            .filter { it.id in selectedResourceIds }
+            .map { it.id }
+        if (resourceIds.isEmpty() || resourceIds.any { it.isBlank() }) return null
         val sourceUrl = preview.sourceUrl?.takeIf { it.isNotBlank() }
             ?: currentPreviewInput.orEmpty()
         val sourceId = preview.sourceId.orEmpty()
@@ -258,7 +340,7 @@ class PreviewSectionRenderer(
                     },
                 )
             }
-            .take(100)
+            .take(if (preview.collection != null || currentDownloadType == DownloadType.TWITTER) Int.MAX_VALUE else 100)
             .toList()
         return DownloadRequest(
             source = DownloadSource(
@@ -274,9 +356,11 @@ class PreviewSectionRenderer(
             selection = DownloadSelection(
                 resourceType = selectedResourceTab.resourceType,
                 includeLiveVideo = isLiveVideoSelected,
+                resourceIds = resourceIds,
             ),
             snapshot = if (
-                currentDownloadType == DownloadType.DOU_YIN && snapshotResources.isNotEmpty()
+                currentDownloadType in setOf(DownloadType.DOU_YIN, DownloadType.TWITTER) &&
+                    snapshotResources.isNotEmpty()
             ) {
                 DownloadSnapshot(
                     sourceId = sourceId,
@@ -294,8 +378,10 @@ class PreviewSectionRenderer(
     private fun renderThumbnails(resources: List<ResolvedResource>, tab: ResourceTab) {
         previewImages.clearThumbnails()
         ui.thumbContainer.removeAllViews()
-        resources.forEachIndexed { index, resource ->
+        val pageStart = selectedPreviewIndex / THUMB_PAGE_SIZE * THUMB_PAGE_SIZE
+        resources.withIndex().drop(pageStart).take(THUMB_PAGE_SIZE).forEach { (index, resource) ->
             val thumb = FrameLayout(context).apply {
+                tag = index
                 layoutParams = ViewGroup.MarginLayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     host.dp(62),
@@ -317,14 +403,14 @@ class PreviewSectionRenderer(
             val imageView = ImageView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    host.dp(62),
                 )
                 scaleType = ImageView.ScaleType.CENTER_CROP
             }
             val fallback = TextView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    host.dp(62),
                 )
                 gravity = Gravity.CENTER
                 textSize = 12f
@@ -338,6 +424,19 @@ class PreviewSectionRenderer(
             }
             thumb.addView(imageView)
             thumb.addView(fallback)
+            thumb.addView(TextView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.START,
+                )
+                text = (index + 1).toString()
+                textSize = 10f
+                setTextColor(Color.WHITE)
+                setPadding(host.dp(4), 0, host.dp(4), 0)
+                setBackgroundResource(R.drawable.bg_counter)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            })
             ui.thumbContainer.addView(thumb)
             val thumbUrl = thumbnailUrl(resource, currentPreview)
             if (thumbUrl.isNotBlank()) {
@@ -349,6 +448,33 @@ class PreviewSectionRenderer(
                 )
             }
         }
+        if (pageStart > 0) addThumbnailPageButton(host.getString(R.string.x_preview_previous),
+            pageStart - THUMB_PAGE_SIZE, resources, tab)
+        if (pageStart + THUMB_PAGE_SIZE < resources.size) addThumbnailPageButton(
+            host.getString(R.string.x_preview_next), pageStart + THUMB_PAGE_SIZE, resources, tab)
+    }
+
+    private fun resourceSelectionDescription(resource: ResolvedResource, index: Int): String = host.getString(
+        R.string.main_select_resource,
+        host.getString(when (resource.mediaType) {
+            "video" -> R.string.main_preview_resource_video
+            "cover" -> R.string.main_preview_resource_cover
+            "audio" -> R.string.main_preview_resource_audio
+            else -> R.string.main_preview_resource_image
+        }),
+        index + 1,
+    )
+
+    private fun addThumbnailPageButton(label: String, index: Int, resources: List<ResolvedResource>, tab: ResourceTab) {
+        ui.thumbContainer.addView(android.widget.Button(context).apply {
+            text = label
+            textSize = 10f
+            setOnClickListener {
+                selectedPreviewIndex = index
+                renderThumbnails(resources, tab)
+                updatePreviewResource(index, resources, tab)
+            }
+        })
     }
 
     private fun updatePreviewResource(
@@ -361,17 +487,28 @@ class PreviewSectionRenderer(
         selectedPreviewIndex = index
         updateThumbnailSelection(index)
         updatePreviewLabels(index, resources.size, tab)
-        if (tab == ResourceTab.VIDEO) {
-            playPreviewVideo(resource)
-        } else {
-            stopPreviewVideo()
-            loadPreviewImage(preview, resource, resources, index)
+        refreshSelectionUi()
+        val live = resource.liveVideo?.takeIf { it.available && it.downloadUrls.isNotEmpty() }
+        when {
+            resource.mediaType == "video" -> playPreviewVideo(resource)
+            live != null -> playPreviewVideo(
+                resource.copy(downloadUrls = live.downloadUrls),
+                ambientImageUrl = thumbnailUrl(resource, preview),
+            ) {
+                stopPreviewVideo()
+                loadPreviewImage(preview, resource, resources, index)
+            }
+            else -> {
+                stopPreviewVideo()
+                loadPreviewImage(preview, resource, resources, index)
+            }
         }
     }
 
     private fun formatMediaType(mediaType: String?): String = when (mediaType) {
         "video" -> host.getString(R.string.main_media_type_video)
         "gallery" -> host.getString(R.string.main_media_type_gallery)
+        "mixed" -> host.getString(R.string.x_media_mixed)
         "live_photo" -> host.getString(R.string.main_media_type_live_photo)
         else -> host.getString(R.string.main_media_type_unknown)
     }
@@ -407,9 +544,22 @@ class PreviewSectionRenderer(
         )
     }
 
-    private fun playPreviewVideo(resource: ResolvedResource) {
+    private fun playPreviewVideo(
+        resource: ResolvedResource,
+        ambientImageUrl: String? = null,
+        onError: (() -> Unit)? = null,
+    ) {
         val videoUrl = resource.downloadUrls.firstOrNull().orEmpty()
-        previewImages.hideForVideo()
+        val useAmbientBackground = !ambientImageUrl.isNullOrBlank()
+        if (useAmbientBackground) {
+            previewImages.loadAmbient(
+                imageUrl = requireNotNull(ambientImageUrl),
+                adjacentUrls = emptyList(),
+                headers = previewRequestHeaders(),
+            )
+        } else {
+            previewImages.hideForVideo()
+        }
         if (videoUrl.isBlank()) {
             stopPreviewVideo()
             ui.videoPreview.showUnavailable()
@@ -420,6 +570,8 @@ class PreviewSectionRenderer(
             uri = Uri.parse(videoUrl),
             headers = previewRequestHeaders(),
             autoPlay = true,
+            useAmbientBackground = useAmbientBackground,
+            onError = onError,
         )
     }
 
@@ -448,14 +600,19 @@ class PreviewSectionRenderer(
     private fun updateThumbnailSelection(index: Int) {
         for (childIndex in 0 until ui.thumbContainer.childCount) {
             ui.thumbContainer.getChildAt(childIndex).setBackgroundResource(
-                if (childIndex == index) R.drawable.bg_thumb_selected else R.drawable.bg_thumb
+                if (ui.thumbContainer.getChildAt(childIndex).tag == index) R.drawable.bg_thumb_selected
+                else R.drawable.bg_thumb
             )
         }
         ui.thumbScroll.post {
-            val selected = ui.thumbContainer.getChildAt(index) ?: return@post
+            val selected = ui.thumbContainer.findViewWithTag<View>(index) ?: return@post
             val targetY = (selected.top - (ui.thumbScroll.height - selected.height) / 2)
                 .coerceAtLeast(0)
             ui.thumbScroll.smoothScrollTo(0, targetY)
         }
     }
+    private companion object {
+        const val THUMB_PAGE_SIZE = 40
+    }
+
 }

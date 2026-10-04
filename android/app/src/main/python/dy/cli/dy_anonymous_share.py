@@ -21,6 +21,7 @@ from urllib.parse import unquote, urlencode, urljoin, urlparse
 import aiohttp
 
 from common.android_utils import extract_first_url
+from .dy_resource_normalizer import _build_live_video, _gallery_items, normalize_aweme
 
 _USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 15; Pixel 9 Pro) AppleWebKit/537.36 "
@@ -47,6 +48,13 @@ _STORY_UNAVAILABLE_ERROR = "日常作品已过期、删除或当前不可见，�
 _WAF_MARKERS = ("lf-waf-js.byted-static.com", "out-sha256.js")
 _TEMPORARY_WAF_ERROR = "抖音公开分享页触发临时风控，请稍后重试"
 _PREFERRED_SHARE_ATTEMPTS = 2
+_OPEN_DETAIL_TIMEOUT_SECONDS = 6
+_OPEN_DETAIL_VISIBILITY_ERROR = "抖音当前将该作品标记为审核中或仅自己可见，公开接口暂未返回媒体"
+_LIVE_IMAGE_FIELDS = (
+    "video", "live_video", "live_video_info", "video_info", "live_photo",
+    "motion_photo", "video_play_addr", "video_download_addr", "live_video_url",
+    "live_video_addr", "clip_type", "live_photo_type",
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +68,19 @@ class AnonymousDouyinResult:
 
 class AnonymousDouyinError(ValueError):
     pass
+
+
+class AnonymousDouyinVisibilityError(AnonymousDouyinError):
+    pass
+
+
+class AnonymousDouyinProfile(AnonymousDouyinError):
+    """Share redirect resolved to an author, not an individual work."""
+
+    def __init__(self, resolved_url: str, user_id: str):
+        super().__init__("此分享链接指向抖音博主主页")
+        self.resolved_url = resolved_url
+        self.user_id = user_id
 
 
 async def resolve_public_douyin(
@@ -87,6 +108,13 @@ async def resolve_public_douyin(
             _validate_douyin_url(resolved_url)
             route = _extract_route(resolved_url)
 
+        # Reuse the validated share redirect, avoiding a second network request
+        # just to distinguish short links to profiles from links to one work.
+        from .dy_profile import profile_user_id
+        user_id = profile_user_id(resolved_url)
+        if user_id:
+            raise AnonymousDouyinProfile(resolved_url, user_id)
+
         source_id = route[1] if route else _extract_id(resolved_url)
         if not source_id:
             raise AnonymousDouyinError("无法从抖音链接中提取作品 ID")
@@ -104,6 +132,9 @@ async def resolve_public_douyin(
                         referer=share_url,
                     )
                     aweme_data = canonicalize_aweme(item, fallback_id=source_id)
+                    aweme_data = await _enrich_live_photos(
+                        session, aweme_data, source_id=source_id, proxy=proxy
+                    )
                     return AnonymousDouyinResult(
                         input_url=input_url,
                         resolved_url=share_url,
@@ -127,6 +158,9 @@ async def resolve_public_douyin(
                     router_data = extract_router_data(html)
                     item = extract_aweme_item(router_data)
                     aweme_data = canonicalize_aweme(item, fallback_id=source_id)
+                    aweme_data = await _enrich_live_photos(
+                        session, aweme_data, source_id=source_id, proxy=proxy
+                    )
                     return AnonymousDouyinResult(
                         input_url=input_url,
                         resolved_url=final_url or resolved_url,
@@ -139,6 +173,21 @@ async def resolve_public_douyin(
                     if str(exc) != _TEMPORARY_WAF_ERROR or attempt + 1 >= attempts:
                         break
                     await asyncio.sleep(0.25)
+
+        # Share reflow responses sometimes contain no work at all while the
+        # public detail endpoint still has it. Try that endpoint once, with
+        # the same bounded timeout and strict work/media validation used for
+        # Live Photo enrichment. It never reuses an earlier cached response.
+        detail_aweme = await _fetch_open_detail(session, source_id=source_id, proxy=proxy)
+        if detail_aweme is not None:
+            detail_type = "slides" if _gallery_items(detail_aweme) else "video"
+            return AnonymousDouyinResult(
+                input_url=input_url,
+                resolved_url=f"https://www.douyin.com/{detail_type}/{source_id}",
+                source_id=source_id,
+                share_type=detail_type,
+                aweme_data=detail_aweme,
+            )
 
         if any(_TEMPORARY_WAF_ERROR in error for error in errors):
             raise AnonymousDouyinError(_TEMPORARY_WAF_ERROR)
@@ -400,6 +449,147 @@ async def _fetch_slides_item(
     if not item:
         raise AnonymousDouyinError("slidesinfo 未找到作品详情")
     return item
+
+
+async def _enrich_live_photos(
+    session: aiohttp.ClientSession,
+    aweme_data: Dict[str, Any],
+    *,
+    source_id: str,
+    proxy: Optional[str],
+) -> Dict[str, Any]:
+    """Recover motion omitted by the reflow API without replacing its stills.
+
+    The public slides response can label Live Photos as static ImageClip=2
+    and omit every per-image video. The public web detail response retains
+    those videos. Treat it as an optional supplement, paired by image URI;
+    an unavailable endpoint must not turn a usable gallery into a failure.
+    """
+    images = _gallery_items(aweme_data)
+    if not any(
+        _image_uri(item) and not _build_live_video(item)["available"]
+        for item in images
+    ):
+        return aweme_data
+    if str(aweme_data.get("aweme_id") or "") != str(source_id):
+        return aweme_data
+    try:
+        detail = await _fetch_open_detail(session, source_id=source_id, proxy=proxy)
+    except AnonymousDouyinVisibilityError:
+        return aweme_data
+    return _merge_live_photo_detail(aweme_data, detail) if detail is not None else aweme_data
+
+
+async def _fetch_open_detail(
+    session: aiohttp.ClientSession,
+    *,
+    source_id: str,
+    proxy: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    """Fetch one matching public work; unavailable optional requests return None."""
+    query = urlencode({"aweme_id": source_id, "aid": "6383"})
+    try:
+        text, _ = await asyncio.wait_for(
+            _request_text(
+                session,
+                f"https://www.douyin.com/aweme/v1/web/aweme/detail/?{query}",
+                proxy=proxy,
+                method="GET",
+                require_html=False,
+                request_headers={
+                    "User-Agent": _USER_AGENT,
+                    "Accept": "application/json, text/plain, */*",
+                    "Origin": "https://open.douyin.com",
+                    "Referer": "https://open.douyin.com/",
+                },
+            ),
+            timeout=_OPEN_DETAIL_TIMEOUT_SECONDS,
+        )
+        payload = json.loads(text)
+        if not isinstance(payload, dict) or payload.get("status_code") != 0:
+            return None
+        filtered = payload.get("filter_detail")
+        if (
+            isinstance(filtered, dict)
+            and str(filtered.get("aweme_id") or "") == str(source_id)
+            and filtered.get("filter_reason") == "status_audit_self_see"
+        ):
+            raise AnonymousDouyinVisibilityError(_OPEN_DETAIL_VISIBILITY_ERROR)
+        detail = payload.get("aweme_detail")
+        if not isinstance(detail, dict):
+            return None
+        detail = canonicalize_aweme(detail)
+        if str(detail.get("aweme_id") or "") != str(source_id):
+            return None
+        work = normalize_aweme(detail)
+        primary_resources = work["resources"]["images"] + work["resources"]["videos"]
+        if not any(
+            _is_visual_media_url(url)
+            for resource in primary_resources
+            for url in resource.get("download_urls", [])
+        ):
+            return None
+        return detail
+    except AnonymousDouyinVisibilityError:
+        raise
+    except (AnonymousDouyinError, asyncio.TimeoutError, ValueError):
+        return None
+
+
+def _is_visual_media_url(url: str) -> bool:
+    parsed = urlparse(url)
+    # A gallery's top-level video.play_addr may actually contain only its
+    # background MP3. Never accept that as the fallback's primary media.
+    return bool(
+        parsed.scheme == "https"
+        and parsed.hostname
+        and not parsed.path.lower().endswith((".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus"))
+    )
+
+
+def _merge_live_photo_detail(
+    aweme_data: Dict[str, Any], detail: Dict[str, Any]
+) -> Dict[str, Any]:
+    source_id = str(aweme_data.get("aweme_id") or "")
+    if not source_id or str(detail.get("aweme_id") or "") != source_id:
+        return aweme_data
+
+    # Never pair by position: a partial or reordered response must not attach
+    # a different clip to the user's selected still image.
+    by_uri: Dict[str, Dict[str, Any]] = {}
+    duplicate_uris: set[str] = set()
+    for item in _gallery_items(detail):
+        uri = _image_uri(item)
+        if not uri:
+            continue
+        if uri in by_uri:
+            duplicate_uris.add(uri)
+        else:
+            by_uri[uri] = item
+
+    enriched = copy.deepcopy(aweme_data)
+    for image in _gallery_items(enriched):
+        uri = _image_uri(image)
+        if not uri or uri in duplicate_uris or _build_live_video(image)["available"]:
+            continue
+        candidate = by_uri.get(uri)
+        if not candidate or not _build_live_video(candidate)["available"]:
+            continue
+        for field in _LIVE_IMAGE_FIELDS:
+            if field in candidate:
+                image[field] = copy.deepcopy(candidate[field])
+    return enriched
+
+
+def _image_uri(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    for address in (item, item.get("origin_image"), item.get("display_image")):
+        if isinstance(address, dict) and isinstance(address.get("uri"), str):
+            uri = address["uri"].strip()
+            if uri:
+                return uri
+    return ""
 
 
 async def _expand_share_url(
