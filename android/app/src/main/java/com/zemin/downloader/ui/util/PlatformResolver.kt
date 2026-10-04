@@ -29,6 +29,8 @@ object PlatformResolver {
         "mobile.twitter.com",
         "vxtwitter.com",
         "www.vxtwitter.com",
+        "fxtwitter.com",
+        "www.fxtwitter.com",
         "fixupx.com",
         "www.fixupx.com",
         "t.co",

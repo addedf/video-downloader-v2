@@ -1,151 +1,113 @@
-# -*- coding: utf-8 -*-
-"""从 TweetResultByRestId 的 result 里提取媒体资源。
-
-视频：extended_entities.media[].video_info.variants 过滤 mp4，按 bitrate
-降序取最高（v1 无画质选择）；GIF（animated_gif）同 video_info 走 mp4。
-图片：media_url_https + ``?name=orig`` 取原图，单推最多 4 张。
-"""
-from typing import Any
-
-VIDEO_TYPES = ("video", "animated_gif")
-IMAGE_NAME_SUFFIX = "?name=orig"
+"""将 X GraphQL / FxTwitter 媒体统一为 Android v2 资源协议。"""
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 
-def _walk_media(node: Any):
-    """深度遍历响应树，产出所有含 legacy 的推文 dict。"""
-    if isinstance(node, dict):
-        legacy = node.get("legacy")
-        if isinstance(legacy, dict) and "full_text" in legacy:
-            yield node
-        for value in node.values():
-            yield from _walk_media(value)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _walk_media(item)
+def media_url(url):
+    """下载和预览只允许 X 的 HTTPS 媒体 CDN，不向第三方发送 Cookie。"""
+    p = urlparse(url or '')
+    return url if (p.scheme == 'https' and p.hostname in ('pbs.twimg.com', 'video.twimg.com')
+                   and not p.username and not p.password and p.port in (None, 443)) else ''
 
 
-def tweet_media(tweet_result: dict) -> list[dict]:
-    """单推 result → media 实体列表（extended_entities 优先）。"""
-    if not tweet_result:
-        return []
-    legacy = tweet_result.get("legacy") or {}
-    extended = legacy.get("extended_entities") or {}
-    return extended.get("media") or []
+def photo_url(url, size='orig'):
+    url = media_url(url)
+    if not url:
+        return '', 'jpg'
+    p = urlparse(url)
+    query = parse_qs(p.query)
+    ext = query.get('format', [p.path.rsplit('.', 1)[-1]])[0].lower()
+    if ext not in ('jpg', 'jpeg', 'png', 'webp', 'gif'):
+        ext = 'jpg'
+    path = p.path
+    if path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
+        path = path.rsplit('.', 1)[0]
+    return urlunparse(p._replace(path=path, query=urlencode({'format': ext, 'name': size}))), ext
 
 
-def video_variants(media: dict) -> list[dict]:
-    """media 实体 → mp4 变体列表（bitrate 降序）。"""
-    info = media.get("video_info") or {}
-    variants = [
-        v for v in info.get("variants") or []
-        if v.get("content_type") == "video/mp4"
-    ]
-    variants.sort(key=lambda v: v.get("bitrate") or 0, reverse=True)
-    return variants
+def unwrap(tweet):
+    while tweet.get('__typename') == 'TweetWithVisibilityResults':
+        tweet = tweet.get('tweet') or {}
+    return tweet
 
 
-def best_video_url(media: dict) -> str | None:
+def tweet_media(tweet):
+    return (((unwrap(tweet).get('legacy') or {}).get('extended_entities') or {}).get('media') or [])
+
+
+def video_variants(media):
+    return sorted([v for v in (media.get('video_info') or {}).get('variants', [])
+                   if v.get('content_type') == 'video/mp4' and media_url(v.get('url'))],
+                  key=lambda v: v.get('bitrate') or 0, reverse=True)
+
+
+def best_video_url(media):
     variants = video_variants(media)
-    return variants[0]["url"] if variants else None
+    return variants[0]['url'] if variants else None
 
 
-def extract_resources(tweet_result: dict) -> dict:
-    """推文 result → v2 resolve 的 resources 分组。
-
-    返回 {'videos': [...], 'images': [...], 'covers': [], 'audios': []}
-    以及统计 counts 与 capabilities 所需的原始计数。
-    """
-    videos: list[dict] = []
-    images: list[dict] = []
-    tweet_id = str(tweet_result.get("rest_id") or "")
-    author = _author_name(tweet_result)
-    text = _plain_text(tweet_result)
-
-    for index, media in enumerate(tweet_media(tweet_result)):
-        media_type = media.get("type")
-        preview = media.get("media_url_https") or ""
-        if media_type in VIDEO_TYPES:
-            variants = video_variants(media)
-            if not variants:
-                continue
-            top = variants[0]
-            videos.append({
-                "id": f"video-{index}",
-                "index": index,
-                "type": "video",
-                "title": text or f"X 视频 {tweet_id}",
-                "preview_urls": [f"{preview}?name=small"] if preview else [],
-                "download_urls": [top["url"]],
-                "width": (media.get("video_info") or {}).get("width"),
-                "height": None,
-                "duration_ms": int(
-                    (media.get("video_info") or {}).get("duration_millis") or 0
-                ) or None,
-                "format_hint": "mp4",
-            })
-        elif media_type == "photo":
-            images.append({
-                "id": f"image-{index}",
-                "index": index,
-                "type": "image",
-                "title": text or f"X 图片 {tweet_id}",
-                "preview_urls": [f"{preview}?name=small"] if preview else [],
-                "download_urls": [f"{preview}{IMAGE_NAME_SUFFIX}"] if preview else [],
-                "width": (media.get("sizes") or {}).get("orig", {}).get("w"),
-                "height": (media.get("sizes") or {}).get("orig", {}).get("h"),
-                "duration_ms": None,
-                "format_hint": "jpg",
-            })
-
-    counts = {
-        "videos": len(videos),
-        "images": len(images),
-        "covers": 0,
-        "audios": 0,
-        "live_videos": 0,
-    }
-    capabilities = {
-        "has_video": bool(videos),
-        "has_images": bool(images),
-        "has_cover": False,
-        "has_audio": False,
-        "has_live_video": False,
-    }
-    work_type = _work_type(videos, images)
-    return {
-        "tweet_id": tweet_id,
-        "author": author,
-        "text": text,
-        "work_type": work_type,
-        "capabilities": capabilities,
-        "counts": counts,
-        "resources": {
-            "videos": videos,
-            "images": images,
-            "covers": [],
-            "audios": [],
-        },
-    }
+def from_fx(post):
+    """只转换当前帖的媒体，不递归引入引用帖或转推内容。"""
+    author = post.get('author') or {}
+    media = post.get('media') or {}
+    entities = []
+    for item in media.get('all') or (media.get('photos', []) + media.get('videos', [])):
+        kind = item.get('type')
+        if kind not in ('photo', 'video', 'gif'):
+            continue
+        variants = [{'url': v.get('url'), 'bitrate': v.get('bitrate', 0), 'content_type': 'video/mp4'}
+                    for v in item.get('formats') or [] if v.get('container') == 'mp4']
+        if not variants and urlparse(item.get('url') or '').path.endswith('.mp4'):
+            variants = [{'url': item['url'], 'content_type': 'video/mp4'}]
+        entities.append({
+            'id_str': item.get('id'), 'type': 'animated_gif' if kind == 'gif' else kind,
+            'media_url_https': item.get('url') if kind == 'photo' else item.get('thumbnail_url'),
+            'ext_alt_text': item.get('altText'),
+            'sizes': {'large': {'w': item.get('width'), 'h': item.get('height')}},
+            'video_info': {'variants': variants, 'duration_millis': round((item.get('duration') or 0) * 1000)},
+        })
+    return {'rest_id': str(post.get('id') or ''),
+            'legacy': {'full_text': post.get('text') or '', 'extended_entities': {'media': entities}},
+            'core': {'user_results': {'result': {'rest_id': author.get('id'), 'legacy': author}}}}
 
 
-def _author_name(tweet_result: dict) -> str:
-    core = tweet_result.get("core") or {}
-    user = (core.get("user_results") or {}).get("result") or {}
-    legacy = user.get("legacy") or {}
-    return legacy.get("screen_name") or legacy.get("name") or ""
+def extract_resources(tweet):
+    tweet = unwrap(tweet)
+    tweet_id = str(tweet.get('rest_id') or '')
+    user = ((tweet.get('core') or {}).get('user_results') or {}).get('result') or {}
+    author = dict(user.get('legacy') or {}, **(user.get('core') or {}))
+    text = ((tweet.get('legacy') or {}).get('full_text') or '').strip()
+    groups = {'videos': [], 'images': [], 'covers': [], 'audios': []}
+    for index, item in enumerate(tweet_media(tweet)):
+        kind = item.get('type')
+        if kind == 'photo':
+            url, ext = photo_url(item.get('media_url_https'))
+            preview, _ = photo_url(item.get('media_url_https'), 'small')
+            resource_type, label = 'image', 'X 图片'
+        elif kind in ('video', 'animated_gif'):
+            url, ext = best_video_url(item), 'mp4'
+            preview = media_url(item.get('media_url_https'))
+            resource_type, label = 'video', 'GIF（MP4）' if kind == 'animated_gif' else 'X 视频'
+        else:
+            continue
+        if not url:
+            continue
+        size = (item.get('sizes') or {}).get('large') or {}
+        groups[resource_type + 's'].append({
+            'id': f'{tweet_id}-{resource_type}-{index}', 'index': index, 'type': resource_type,
+            'title': f'{label} · {text[:80]}' if text else label,
+            'preview_urls': [preview] if preview else [], 'download_urls': [url],
+            'width': size.get('w'), 'height': size.get('h'),
+            'duration_ms': (item.get('video_info') or {}).get('duration_millis'), 'format_hint': ext,
+        })
+    return {'tweet_id': tweet_id, 'text': text,
+            'author': {'id': user.get('rest_id') or '', 'name': author.get('name') or '',
+                       'handle': author.get('screen_name') or ''}, 'resources': groups}
 
 
-def _plain_text(tweet_result: dict) -> str:
-    legacy = tweet_result.get("legacy") or {}
-    text = legacy.get("full_text") or ""
-    return text.strip()
-
-
-def _work_type(videos: list, images: list) -> str:
-    if videos and images:
-        return "mixed"
-    if videos:
-        return "video"
-    if images:
-        return "image"
-    return "unknown"
+def work_for(groups, title, author):
+    videos, images = groups['videos'], groups['images']
+    return {'type': 'mixed' if videos and images else 'video' if videos else 'gallery',
+            'title': title, 'author': author, 'resources': groups,
+            'counts': dict({k: len(v) for k, v in groups.items()}, live_videos=0),
+            'capabilities': {'has_video': bool(videos), 'has_images': bool(images),
+                             'has_cover': False, 'has_audio': False, 'has_live_video': False}}

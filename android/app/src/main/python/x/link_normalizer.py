@@ -1,96 +1,49 @@
-# -*- coding: utf-8 -*-
-"""X 链接归一化：x.com / twitter.com / t.co / vxtwitter / fixupx → 推文 id。
-
-归一化规则：
-- host 白名单：x.com、twitter.com（含 www./mobile. 前缀）、vxtwitter.com、
-  fixupx.com 及其 www. 变体；
-- t.co 短链需要网络重定向解析，由调用方处理（``needs_redirect=True``）；
-- 路径取 ``/<user>/status(es)/<id>``，容忍末尾 ``/video/1``、``/photo/1``
-  与 query（``?s=20`` 等）；
-- 直接粘贴纯数字 id 也接受。
-"""
+"""严格识别 X 帖子、主页和短链；网络重定向由服务层处理。"""
 import re
 from urllib.parse import urlparse
 
 X_HOSTS = {
-    "x.com",
-    "www.x.com",
-    "mobile.x.com",
-    "twitter.com",
-    "www.twitter.com",
-    "mobile.twitter.com",
-    "vxtwitter.com",
-    "www.vxtwitter.com",
-    "fixupx.com",
-    "www.fixupx.com",
+    'x.com', 'www.x.com', 'mobile.x.com', 'twitter.com', 'www.twitter.com',
+    'mobile.twitter.com', 'vxtwitter.com', 'www.vxtwitter.com',
+    'fixupx.com', 'www.fixupx.com', 'fxtwitter.com', 'www.fxtwitter.com',
 }
-SHORT_HOSTS = {"t.co", "www.t.co"}
-_STATUS_ID_RE = re.compile(r"/status(?:es)?/(\d+)")
-_URL_RE = re.compile(r"https?://[^\s\"'<>，。；）)】]+")
-_TRAILING = ".,;，。；)）】"
+SHORT_HOSTS = {'t.co', 'www.t.co'}
+_RESERVED = {'home', 'explore', 'search', 'settings', 'notifications', 'messages',
+             'i', 'intent', 'share', 'login', 'logout', 'signup', 'compose', 'tos', 'privacy'}
+_URL_RE = re.compile(r'https?://[^\s\"\'<>，。；）)】]+')
+_STATUS_RE = re.compile(r'^/([A-Za-z0-9_]{1,15}|i/web)/status(?:es)?/(\d{2,20})(?:/(?:photo|video)/\d+)?/?$')
+_PROFILE_RE = re.compile(r'^/([A-Za-z0-9_]{1,15})(?:/media)?/?$')
 
 
-def extract_first_url(text: str) -> str | None:
-    """从分享文本里抽第一条 URL，去掉中文/英文尾随标点。"""
-    match = _URL_RE.search(text or "")
-    if not match:
-        return None
-    return match.group(0).rstrip(_TRAILING)
+def extract_first_url(text):
+    match = _URL_RE.search(text or '')
+    return match.group().rstrip('.,;，。；)）】]') if match else None
 
 
-def normalize(text: str) -> dict:
-    """分享文本 → {'platform': 'x', 'tweet_id': str, 'url': str, 'needs_redirect': bool}。
-
-    解析失败抛 ValueError。
-    """
-    url = extract_first_url(text or "")
-    candidate = (url or (text or "").strip()).strip()
-    if not candidate:
-        raise ValueError("分享内容为空")
-
-    if candidate.isdigit():
-        return {
-            "platform": "x",
-            "tweet_id": candidate,
-            "url": f"https://x.com/i/status/{candidate}",
-            "needs_redirect": False,
-        }
-
-    parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
-    host = (parsed.hostname or "").lower()
-    path = parsed.path or ""
-
-    if host in SHORT_HOSTS:
-        if not path or path == "/":
-            raise ValueError(f"t.co 短链不完整：{candidate}")
-        return {
-            "platform": "x",
-            "tweet_id": "",
-            "url": f"https://t.co{path}",
-            "needs_redirect": True,
-        }
-
+def normalize(text):
+    candidate = extract_first_url(text) or (text or '').strip()
+    if re.fullmatch(r'\d{2,20}', candidate):
+        candidate = f'https://x.com/i/status/{candidate}'
+    parsed = urlparse(candidate if '://' in candidate else f'https://{candidate}')
+    host = (parsed.hostname or '').lower()
+    if parsed.scheme not in ('http', 'https') or parsed.username or parsed.password or parsed.port:
+        raise ValueError('请粘贴有效的 X 帖子或博主主页链接')
+    base = {'platform': 'x', 'tweet_id': '', 'handle': '', 'needs_redirect': False}
+    if host in SHORT_HOSTS and re.fullmatch(r'/[A-Za-z0-9]+', parsed.path):
+        return dict(base, kind='short', url=f'https://t.co{parsed.path}', needs_redirect=True)
     if host not in X_HOSTS:
-        raise ValueError(f"不是 X/Twitter 链接：{candidate}")
-
-    match = _STATUS_ID_RE.search(path)
-    if not match:
-        raise ValueError(f"链接里没有推文 id：{candidate}")
-    tweet_id = match.group(1)
-    screen_name = path.split("/status", 1)[0].strip("/") or None
-    canonical = (
-        f"https://x.com/{screen_name}/status/{tweet_id}"
-        if screen_name
-        else f"https://x.com/i/status/{tweet_id}"
-    )
-    return {
-        "platform": "x",
-        "tweet_id": tweet_id,
-        "url": canonical,
-        "needs_redirect": False,
-    }
+        raise ValueError('不是支持的 X/Twitter 链接')
+    match = _STATUS_RE.fullmatch(parsed.path)
+    if match:
+        handle, tweet_id = match.groups()
+        return dict(base, kind='tweet', tweet_id=tweet_id,
+                    url=f'https://x.com/{handle}/status/{tweet_id}')
+    match = _PROFILE_RE.fullmatch(parsed.path)
+    if match and match[1].lower() not in _RESERVED:
+        handle = match[1]
+        return dict(base, kind='profile', handle=handle, url=f'https://x.com/{handle}')
+    raise ValueError('请粘贴 X 帖子链接或博主主页链接（支持 /用户名/media）')
 
 
-def from_redirect(location: str) -> dict:
-    """t.co 重定向落点 → 归一化结果（复用同一套 host/路径规则）。"""
+def from_redirect(location):
     return normalize(location)

@@ -92,6 +92,12 @@
                     android:host="vxtwitter.com"
                     android:scheme="https" />
                 <data
+                    android:host="fxtwitter.com"
+                    android:scheme="https" />
+                <data
+                    android:host="www.fxtwitter.com"
+                    android:scheme="https" />
+                <data
                     android:host="fixupx.com"
                     android:scheme="https" />
             </intent-filter>

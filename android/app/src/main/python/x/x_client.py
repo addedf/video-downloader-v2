@@ -2,8 +2,7 @@
 """X guest 客户端：免登录 guest token + GraphQL 读接口。
 
 只覆盖读（单推/用户时间线），登录流不在本层（阶段 3 再接）。
-阶段 0 实测（2026-09-28）：guest activate + TweetResultByRestId 直连 200，
-不需要 x-client-transaction-id。
+接口可用性随上游变化，失败由服务层降级到公开解析服务。
 
 传输层用 httpx 同步客户端（Chaquopy 已有依赖），桌面端同一套代码可跑。
 """
@@ -37,7 +36,7 @@ def _load_operations() -> dict:
 OPERATIONS = _load_operations()
 
 
-class GraphQLError(Exception):
+class GraphQLError(RuntimeError):
     """GraphQL 200 + errors 且无 data 时抛（X 的失败不一定走 HTTP 状态码）。"""
 
     def __init__(self, operation: str, errors, payload=None):
@@ -148,7 +147,7 @@ class XGuestClient:
 
     def user_tweets(self, user_id: str, count: int = 20,
                     cursor: str | None = None) -> dict:
-        """用户原创时间线（guest 可用，阶段 3 批量下载用）。"""
+        """用户时间线原始接口；不作为主页批量提取的可用性保证。"""
         variables = {
             "userId": str(user_id),
             "count": count,
