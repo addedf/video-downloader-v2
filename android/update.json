@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "versionCode": 15,
-  "versionName": "2.4.3",
+  "versionCode": 16,
+  "versionName": "2.5.0",
   "minSupportedVersionCode": 5,
-  "apkUrl": "https://updates.menkange.com/android/VideoDownloaderV2-v2.4.3-arm64-v8a.apk",
-  "sha256": "b24e4b7d837b95a6b32fb78ef274963323096a0fe742a030d9f93a0b4173bcb1",
-  "changelog": "热更新链路验证版：功能与 v2.4.2 一致，用于验证应用内更新全流程（下载、断点续传、安全校验、自动续装）。",
-  "publishedAt": "2026-09-28T17:56:42Z"
+  "apkUrl": "https://updates.menkange.com/android/VideoDownloaderV2-v2.5.0-arm64-v8a.apk",
+  "sha256": "f08b8bc13b7a6b5f59f06d23c9f31d402b2e1f66ce73af4135836150c886e986",
+  "changelog": "新增 X 帖子与公开主页媒体提取、抖音主页分页提取；支持全部/视频/图片分类、逐项勾选及继续提取；改进实况预览、保存与下载进度显示。小红书继续支持单篇笔记。抖音主页请优先登录后测试，完整真实下载仍待手机验收。",
+  "publishedAt": "2026-10-04T14:19:59Z"
 }
