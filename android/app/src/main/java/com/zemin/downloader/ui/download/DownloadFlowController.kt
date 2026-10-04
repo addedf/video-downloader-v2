@@ -8,11 +8,11 @@ import com.zemin.downloader.common.DownloadProgressListener
 import com.zemin.downloader.common.PyResolveResult
 import com.zemin.downloader.common.bean.DownloadRequest
 import com.zemin.downloader.common.bean.PyDiagnosticsResponse
+import com.zemin.downloader.common.core.Ability
 import com.zemin.downloader.common.core.BridgeAbilityManager
 import com.zemin.downloader.common.core.DownloadModule
 import com.zemin.downloader.common.core.StoreModule
 import com.zemin.downloader.common.core.currentDownloadType
-import com.zemin.downloader.common.core.currentType
 import com.zemin.downloader.common.util.DownloadHistoryRecord
 import com.zemin.downloader.common.util.DownloadHistoryStore
 import com.zemin.downloader.common.util.ExceptionLogRecord
@@ -133,6 +133,9 @@ class DownloadFlowController(private val host: MainActivity) {
         request: DownloadRequest? = null,
     ) {
         if (downloading || resolving) return
+        val taskAbility = Ability
+        val taskStore = taskAbility.storeModule
+        val taskDownload = taskAbility.downloadModule
         downloading = true
         host.setUiEnabled(false)
         host.bubble.cancelHide()
@@ -157,12 +160,12 @@ class DownloadFlowController(private val host: MainActivity) {
                 } else {
                     selection.resourceType
                 }
-            } ?: preview?.mediaType ?: currentType
+            } ?: preview?.mediaType ?: taskAbility.downloadType.type
             try {
                 withContext(Dispatchers.IO) {
-                    StoreModule.cleanupDownloadCache()
+                    taskStore.cleanupDownloadCache()
                 }
-                val result = DownloadModule.download(
+                val result = taskDownload.download(
                     inputText = shareText,
                     request = request,
                     progressListener = createDownloadProgressListener(),
@@ -176,8 +179,8 @@ class DownloadFlowController(private val host: MainActivity) {
                 }
                 val registeredUris = withContext(Dispatchers.IO) {
                     result.files.map(::File).mapNotNull { file ->
-                        StoreModule.registerMediaFile(file)?.also {
-                            StoreModule.deleteTemporaryDownloadFile(file)
+                        taskStore.registerMediaFile(file)?.also {
+                            taskStore.deleteTemporaryDownloadFile(file)
                         }
                     }
                 }
@@ -185,7 +188,7 @@ class DownloadFlowController(private val host: MainActivity) {
                 val registrationFailed = result.files.size - registeredUris.size
                 if ((result.ok || result.skipped > 0) && registrationFailed == 0) {
                     withContext(Dispatchers.IO) {
-                        StoreModule.cleanupDownloadSidecars()
+                        taskStore.cleanupDownloadSidecars()
                     }
                     host.bubble.showSuccess(
                         primaryText = host.getString(R.string.main_progress_success),

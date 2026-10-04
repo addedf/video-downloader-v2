@@ -4,9 +4,10 @@ import android.net.Uri
 import com.zemin.downloader.common.IStoreModule
 import com.zemin.downloader.common.util.LocalStorage
 import com.zemin.downloader.common.util.MediaStorageManager
+import com.zemin.downloader.impl.DownloadType
 import java.io.File
 
-abstract class BaseStoreModule : IStoreModule {
+abstract class BaseStoreModule(final override val downloadType: DownloadType) : IStoreModule {
     override fun loggedIn(): Boolean {
         return hasCookie()
     }
@@ -28,7 +29,7 @@ abstract class BaseStoreModule : IStoreModule {
     }
 
     override fun registerMediaFile(file: File): Uri? {
-        return MediaStorageManager.registerMediaFile(file)
+        return MediaStorageManager.registerMediaFile(file, downloadType)
     }
 
     override fun cleanupDownloadCache() {

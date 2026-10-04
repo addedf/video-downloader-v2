@@ -7,15 +7,13 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.zemin.downloader.appContext
-import com.zemin.downloader.common.core.currentType
+import com.zemin.downloader.impl.DownloadType
 import java.io.File
 
 object MediaStorageManager {
     const val APP_FILE_DIR = "python-runtime"
     const val CACHE_DOWNLOAD_DIR = "python-downloads"
-    const val MEDIA_PICTURE_DOWNLOAD_DIR = "Pictures"
-    const val MEDIA_VIDEO_DOWNLOAD_DIR = "Movies"
-    const val MEDIA_AUDIO_DOWNLOAD_DIR = "Music"
+    const val APP_MEDIA_DIR = "视频下载器"
     const val TEMP_EXTENSION = "tmp"
     const val EXTENSION_MP4 = "mp4"
     const val EXTENSION_MOV = "mov"
@@ -114,26 +112,26 @@ object MediaStorageManager {
         }
     }
 
-    fun registerMediaFile(file: File): Uri? {
+    fun registerMediaFile(file: File, platform: DownloadType): Uri? {
         val mimeType = mimeTypeForExtension(file.extension.lowercase()) ?: return null
         return when {
             isVideoMimeType(mimeType) -> registerToMediaStore(
                 file, mimeType,
                 collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                relativePath = ::getVideoMediaStoreRelativePath,
-                legacyDir = getLegacyVideoDownloadDir(),
+                relativePath = getVideoMediaStoreRelativePath(platform),
+                legacyDir = getLegacyPublicMediaDir(Environment.DIRECTORY_DCIM, platform),
             )
             isImageMimeType(mimeType) -> registerToMediaStore(
                 file, mimeType,
                 collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                relativePath = ::getImageMediaStoreRelativePath,
-                legacyDir = getLegacyPictureDownloadDir(),
+                relativePath = getImageMediaStoreRelativePath(platform),
+                legacyDir = getLegacyPublicMediaDir(Environment.DIRECTORY_DCIM, platform),
             )
             isAudioMimeType(mimeType) -> registerToMediaStore(
                 file, mimeType,
                 collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                relativePath = ::getAudioMediaStoreRelativePath,
-                legacyDir = getLegacyAudioDownloadDir(),
+                relativePath = getAudioMediaStoreRelativePath(platform),
+                legacyDir = getLegacyPublicMediaDir(Environment.DIRECTORY_MUSIC, platform),
             )
             else -> null
         }
@@ -170,14 +168,14 @@ object MediaStorageManager {
         file: File,
         mimeType: String,
         collection: Uri,
-        relativePath: () -> String,
+        relativePath: String,
         legacyDir: File,
     ): Uri? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
                 put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath())
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
 
@@ -234,12 +232,12 @@ object MediaStorageManager {
         return uri
     }
 
-    fun getPublicMediaRelativePathForCachePath(cachePath: String): String? {
+    fun getPublicMediaRelativePathForCachePath(cachePath: String, platform: DownloadType): String? {
         val mimeType = mimeTypeForCachePath(cachePath) ?: return null
         return when {
-            isImageMimeType(mimeType) -> getImageMediaStoreRelativePath()
-            isVideoMimeType(mimeType) -> getVideoMediaStoreRelativePath()
-            isAudioMimeType(mimeType) -> getAudioMediaStoreRelativePath()
+            isImageMimeType(mimeType) -> getImageMediaStoreRelativePath(platform)
+            isVideoMimeType(mimeType) -> getVideoMediaStoreRelativePath(platform)
+            isAudioMimeType(mimeType) -> getAudioMediaStoreRelativePath(platform)
             else -> null
         }
     }
@@ -248,37 +246,35 @@ object MediaStorageManager {
         return mimeTypeForExtension(File(cachePath).extension.lowercase())
     }
 
-    fun getVideoMediaStoreRelativePath(): String {
-        return buildMediaStoreRelativePath(MEDIA_VIDEO_DOWNLOAD_DIR)
+    fun getVideoMediaStoreRelativePath(platform: DownloadType): String {
+        return buildMediaStoreRelativePath(Environment.DIRECTORY_DCIM, platform)
     }
 
-    fun getImageMediaStoreRelativePath(): String {
-        return buildMediaStoreRelativePath(MEDIA_PICTURE_DOWNLOAD_DIR)
+    fun getImageMediaStoreRelativePath(platform: DownloadType): String {
+        return buildMediaStoreRelativePath(Environment.DIRECTORY_DCIM, platform)
     }
 
-    fun getAudioMediaStoreRelativePath(): String {
-        return buildMediaStoreRelativePath(MEDIA_AUDIO_DOWNLOAD_DIR)
+    fun getAudioMediaStoreRelativePath(platform: DownloadType): String {
+        return buildMediaStoreRelativePath(Environment.DIRECTORY_MUSIC, platform)
     }
 
-    private fun buildMediaStoreRelativePath(rootDir: String): String {
-        return rootDir + PATH_SEPARATOR + currentType
+    private fun buildMediaStoreRelativePath(rootDir: String, platform: DownloadType): String {
+        return rootDir + PATH_SEPARATOR + platformMediaDir(platform) + PATH_SEPARATOR
     }
 
-    private fun getLegacyVideoDownloadDir(): File {
-        return getLegacyPublicMediaDir(Environment.DIRECTORY_MOVIES)
+    // 保存目录名固定，不随界面语言改变；type 仍保留原值，兼容已有 Cookie 等存储键。
+    private fun platformMediaDir(platform: DownloadType): String {
+        val folderName = when (platform) {
+            DownloadType.DOU_YIN -> "抖音"
+            DownloadType.XIAO_HONG_SHU -> "小红书"
+            DownloadType.TWITTER -> "X"
+        }
+        return APP_MEDIA_DIR + PATH_SEPARATOR + folderName
     }
 
-    private fun getLegacyPictureDownloadDir(): File {
-        return getLegacyPublicMediaDir(Environment.DIRECTORY_PICTURES)
-    }
-
-    private fun getLegacyAudioDownloadDir(): File {
-        return getLegacyPublicMediaDir(Environment.DIRECTORY_MUSIC)
-    }
-
-    private fun getLegacyPublicMediaDir(environmentDir: String): File {
+    private fun getLegacyPublicMediaDir(environmentDir: String, platform: DownloadType): File {
         return File(
-            Environment.getExternalStoragePublicDirectory(environmentDir), currentType
+            Environment.getExternalStoragePublicDirectory(environmentDir), platformMediaDir(platform)
         )
     }
 }

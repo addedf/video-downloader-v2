@@ -147,7 +147,7 @@
     <string name="main_progress_finalizing">正在保存</string>
     <string name="main_progress_finalizing_detail">正在写入系统相册</string>
     <string name="main_progress_success">保存完成</string>
-    <string name="main_progress_success_detail">文件已保存到系统相册</string>
+    <string name="main_progress_success_detail">文件已按平台分类保存到系统相册</string>
     <string name="main_progress_error">下载失败</string>
     <string name="main_progress_error_detail">点按前往最近下载重试</string>
     <string name="update_dialog_title">发现新版本</string>
